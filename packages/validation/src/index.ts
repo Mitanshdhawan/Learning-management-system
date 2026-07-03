@@ -44,3 +44,10 @@ export const updateMeSchema = z.object({
   theme: themeSchema.optional(),
 })
 export type UpdateMeInput = z.infer<typeof updateMeSchema>
+
+// Admin editing another user. managerId: uuid = assign, null = unassign, omit = no change.
+export const updateUserSchema = z.object({
+  managerId: z.string().uuid().nullable().optional(),
+  role: roleSchema.optional(),
+})
+export type UpdateUserInput = z.infer<typeof updateUserSchema>

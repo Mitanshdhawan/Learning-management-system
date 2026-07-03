@@ -8,6 +8,7 @@ build/
 .next/
 out/
 .turbo/
+uploads/
 
 # env files (keep *.example)
 .env
