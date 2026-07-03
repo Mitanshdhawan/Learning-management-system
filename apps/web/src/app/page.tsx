@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { AuthStatus } from '@/components/auth-status'
 import { ThemeToggle } from '@/components/theme-toggle'
 
 const features = [
@@ -16,9 +17,7 @@ export default function Home() {
           TOP LMS
         </div>
         <div className="flex items-center gap-4">
-          <Link href="/login" className="text-sm text-muted transition hover:text-foreground">
-            Sign in
-          </Link>
+          <AuthStatus />
           <ThemeToggle />
         </div>
       </header>
@@ -53,7 +52,10 @@ export default function Home() {
 
         <section id="features" className="grid gap-4 pb-24 sm:grid-cols-3">
           {features.map((f) => (
-            <div key={f.title} className="rounded-2xl border border-border bg-card p-6">
+            <div
+              key={f.title}
+              className="rounded-2xl border border-border bg-card p-6 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-accent/40 hover:shadow-lg"
+            >
               <h3 className="font-semibold">{f.title}</h3>
               <p className="mt-2 text-sm text-muted">{f.body}</p>
             </div>

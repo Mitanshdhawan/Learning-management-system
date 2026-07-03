@@ -3,17 +3,14 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { ThemeToggle } from '@/components/theme-toggle'
+import { useAuth, type AuthUser } from '@/components/auth-provider'
 import { useTheme } from '@/components/theme-provider'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { apiPost } from '@/lib/api'
-
-interface LoginResponse {
-  user: { theme?: 'light' | 'dark'; fullName?: string | null }
-  accessToken: string
-}
 
 export default function LoginPage() {
   const router = useRouter()
+  const { signIn } = useAuth()
   const { setTheme } = useTheme()
   const [email, setEmail] = useState('admin@toplms.local')
   const [password, setPassword] = useState('admin1234')
@@ -25,10 +22,13 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
     try {
-      const { user, accessToken } = await apiPost<LoginResponse>('/auth/login', { email, password })
-      localStorage.setItem('accessToken', accessToken)
-      if (user.theme) setTheme(user.theme) // apply the user's saved theme
-      router.push('/')
+      const { user, accessToken } = await apiPost<{ user: AuthUser; accessToken: string }>(
+        '/auth/login',
+        { email, password },
+      )
+      signIn(accessToken, user)
+      setTheme(user.theme)
+      router.push('/dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
