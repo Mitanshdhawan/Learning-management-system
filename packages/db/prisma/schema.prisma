@@ -1,0 +1,424 @@
+// TOP LMS — Prisma schema (PostgreSQL)
+// Source of truth for the database. Mirrors the dbdiagram.io design.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================
+//  Enums
+// ============================================================
+enum UserRole {
+  admin
+  manager
+  employee
+}
+
+enum UserStatus {
+  invited
+  active
+  deactivated
+}
+
+enum CourseStatus {
+  draft
+  published
+  archived
+}
+
+enum LessonType {
+  video
+  reading
+}
+
+enum EnrollmentStatus {
+  not_started
+  in_progress
+  completed
+}
+
+enum ProgressStatus {
+  not_started
+  in_progress
+  completed
+}
+
+enum QuestionType {
+  single_choice
+  multiple_choice
+  true_false
+}
+
+enum ApprovalStatus {
+  not_required
+  pending
+  approved
+  rejected
+}
+
+enum MediaKind {
+  video
+  image
+  document
+}
+
+enum Theme {
+  light
+  dark
+}
+
+// ============================================================
+//  Media library — every uploaded file (Cloudinary key + metadata)
+// ============================================================
+model MediaAsset {
+  id              String    @id @default(uuid()) @db.Uuid
+  kind            MediaKind
+  provider        String    @default("cloudinary")
+  storageKey      String    @unique @map("storage_key")
+  fileName        String?   @map("file_name")
+  mimeType        String    @map("mime_type")
+  sizeBytes       BigInt?   @map("size_bytes")
+  durationSeconds Int?      @map("duration_seconds")
+  width           Int?
+  height          Int?
+  uploadedById    String?   @map("uploaded_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  uploadedBy       User?            @relation("UploadedMedia", fields: [uploadedById], references: [id])
+  avatarUsers      User[]           @relation("UserAvatar")
+  courseThumbnails Course[]         @relation("CourseThumbnail")
+  lessonVideos     Lesson[]         @relation("LessonVideo")
+  lessonResources  LessonResource[]
+  certificates     Certificate[]
+
+  @@index([kind])
+  @@index([uploadedById])
+  @@map("media_assets")
+}
+
+// ============================================================
+//  Users & invitations
+// ============================================================
+model User {
+  id               String     @id @default(uuid()) @db.Uuid
+  email            String     @unique
+  fullName         String?    @map("full_name")
+  passwordHash     String?    @map("password_hash")
+  role             UserRole   @default(employee)
+  managerId        String?    @map("manager_id") @db.Uuid
+  canCreateCourses Boolean    @default(false) @map("can_create_courses")
+  avatarId         String?    @map("avatar_id") @db.Uuid
+  status           UserStatus @default(invited)
+  theme            Theme      @default(light)
+  lastLoginAt      DateTime?  @map("last_login_at")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  manager User?       @relation("UserManager", fields: [managerId], references: [id])
+  reports User[]      @relation("UserManager")
+  avatar  MediaAsset? @relation("UserAvatar", fields: [avatarId], references: [id])
+
+  uploadedMedia        MediaAsset[]   @relation("UploadedMedia")
+  invitationsSent      Invitation[]   @relation("InvitedBy")
+  invitationsAsManager Invitation[]   @relation("InvitationManager")
+  coursesCreated       Course[]       @relation("CourseCreatedBy")
+  enrollments          Enrollment[]   @relation("EnrollmentUser")
+  enrollmentsAssigned  Enrollment[]   @relation("EnrollmentEnrolledBy")
+  enrollmentsApproved  Enrollment[]   @relation("EnrollmentApprovedBy")
+  notifications        Notification[]
+  activityLogs         ActivityLog[]
+
+  @@index([managerId])
+  @@index([role])
+  @@map("users")
+}
+
+model Invitation {
+  id          String    @id @default(uuid()) @db.Uuid
+  email       String
+  token       String    @unique
+  role        UserRole  @default(employee)
+  managerId   String?   @map("manager_id") @db.Uuid
+  invitedById String    @map("invited_by") @db.Uuid
+  expiresAt   DateTime  @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  manager   User? @relation("InvitationManager", fields: [managerId], references: [id])
+  invitedBy User  @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@index([email])
+  @@index([token])
+  @@map("invitations")
+}
+
+// ============================================================
+//  Course content
+// ============================================================
+model Category {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String  @unique
+  description String?
+
+  courses Course[]
+
+  @@map("categories")
+}
+
+model Course {
+  id                 String       @id @default(uuid()) @db.Uuid
+  title              String
+  slug               String       @unique
+  description        String?
+  thumbnailId        String?      @map("thumbnail_id") @db.Uuid
+  categoryId         String?      @map("category_id") @db.Uuid
+  createdById        String       @map("created_by") @db.Uuid
+  status             CourseStatus @default(draft)
+  estimatedMinutes   Int?         @map("estimated_minutes")
+  certificateEnabled Boolean      @default(true) @map("certificate_enabled")
+  publishedAt        DateTime?    @map("published_at")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  thumbnail MediaAsset? @relation("CourseThumbnail", fields: [thumbnailId], references: [id])
+  category  Category?   @relation(fields: [categoryId], references: [id])
+  createdBy User        @relation("CourseCreatedBy", fields: [createdById], references: [id])
+
+  modules     Module[]
+  enrollments Enrollment[]
+
+  @@index([categoryId])
+  @@index([status])
+  @@map("courses")
+}
+
+model Module {
+  id          String  @id @default(uuid()) @db.Uuid
+  courseId    String  @map("course_id") @db.Uuid
+  title       String
+  description String?
+  position    Int
+
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons Lesson[]
+  test    Test?
+
+  @@unique([courseId, position])
+  @@map("modules")
+}
+
+model Lesson {
+  id          String     @id @default(uuid()) @db.Uuid
+  moduleId    String     @map("module_id") @db.Uuid
+  title       String
+  type        LessonType @default(video)
+  position    Int
+  videoId     String?    @map("video_id") @db.Uuid
+  contentHtml String?    @map("content_html")
+  isPreview   Boolean    @default(false) @map("is_preview")
+
+  module    Module           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  video     MediaAsset?      @relation("LessonVideo", fields: [videoId], references: [id])
+  resources LessonResource[]
+  progress  LessonProgress[]
+
+  @@unique([moduleId, position])
+  @@map("lessons")
+}
+
+model LessonResource {
+  id        String   @id @default(uuid()) @db.Uuid
+  lessonId  String   @map("lesson_id") @db.Uuid
+  mediaId   String   @map("media_id") @db.Uuid
+  title     String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  lesson Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  media  MediaAsset @relation(fields: [mediaId], references: [id])
+
+  @@index([lessonId])
+  @@map("lesson_resources")
+}
+
+// ============================================================
+//  Assessments (optional per module)
+// ============================================================
+model Test {
+  id               String  @id @default(uuid()) @db.Uuid
+  moduleId         String  @unique @map("module_id") @db.Uuid
+  title            String
+  passingScore     Int     @default(70) @map("passing_score")
+  maxAttempts      Int?    @map("max_attempts")
+  timeLimitMinutes Int?    @map("time_limit_minutes")
+  isRequired       Boolean @default(true) @map("is_required")
+
+  module    Module        @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  questions Question[]
+  attempts  TestAttempt[]
+
+  @@map("tests")
+}
+
+model Question {
+  id           String       @id @default(uuid()) @db.Uuid
+  testId       String       @map("test_id") @db.Uuid
+  questionText String       @map("question_text")
+  type         QuestionType @default(single_choice)
+  points       Int          @default(1)
+  position     Int
+
+  test    Test             @relation(fields: [testId], references: [id], onDelete: Cascade)
+  options QuestionOption[]
+  answers TestAnswer[]
+
+  @@map("questions")
+}
+
+model QuestionOption {
+  id         String  @id @default(uuid()) @db.Uuid
+  questionId String  @map("question_id") @db.Uuid
+  optionText String  @map("option_text")
+  isCorrect  Boolean @default(false) @map("is_correct")
+  position   Int
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("question_options")
+}
+
+// ============================================================
+//  Enrollment, progress & approval
+// ============================================================
+model Enrollment {
+  id              String           @id @default(uuid()) @db.Uuid
+  userId          String           @map("user_id") @db.Uuid
+  courseId        String           @map("course_id") @db.Uuid
+  enrolledById    String?          @map("enrolled_by") @db.Uuid
+  isMandatory     Boolean          @default(false) @map("is_mandatory")
+  dueDate         DateTime?        @map("due_date")
+  status          EnrollmentStatus @default(not_started)
+  progressPercent Int              @default(0) @map("progress_percent")
+  approvalStatus  ApprovalStatus   @default(not_required) @map("approval_status")
+  approvedById    String?          @map("approved_by") @db.Uuid
+  approvedAt      DateTime?        @map("approved_at")
+  completedAt     DateTime?        @map("completed_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  user       User   @relation("EnrollmentUser", fields: [userId], references: [id])
+  course     Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  enrolledBy User?  @relation("EnrollmentEnrolledBy", fields: [enrolledById], references: [id])
+  approvedBy User?  @relation("EnrollmentApprovedBy", fields: [approvedById], references: [id])
+
+  lessonProgress LessonProgress[]
+  testAttempts   TestAttempt[]
+  certificate    Certificate?
+
+  @@unique([userId, courseId])
+  @@index([courseId])
+  @@map("enrollments")
+}
+
+model LessonProgress {
+  id             String         @id @default(uuid()) @db.Uuid
+  enrollmentId   String         @map("enrollment_id") @db.Uuid
+  lessonId       String         @map("lesson_id") @db.Uuid
+  status         ProgressStatus @default(not_started)
+  watchedSeconds Int            @default(0) @map("watched_seconds")
+  completedAt    DateTime?      @map("completed_at")
+  lastAccessedAt DateTime?      @map("last_accessed_at")
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lesson     Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([enrollmentId, lessonId])
+  @@map("lesson_progress")
+}
+
+model TestAttempt {
+  id            String    @id @default(uuid()) @db.Uuid
+  testId        String    @map("test_id") @db.Uuid
+  enrollmentId  String    @map("enrollment_id") @db.Uuid
+  attemptNumber Int       @default(1) @map("attempt_number")
+  score         Int?
+  passed        Boolean?
+  startedAt     DateTime  @default(now()) @map("started_at")
+  submittedAt   DateTime? @map("submitted_at")
+
+  test       Test         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  enrollment Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  answers    TestAnswer[]
+
+  @@index([enrollmentId, testId])
+  @@map("test_attempts")
+}
+
+model TestAnswer {
+  id                String   @id @default(uuid()) @db.Uuid
+  attemptId         String   @map("attempt_id") @db.Uuid
+  questionId        String   @map("question_id") @db.Uuid
+  selectedOptionIds Json?    @map("selected_option_ids")
+  isCorrect         Boolean? @map("is_correct")
+  pointsAwarded     Int      @default(0) @map("points_awarded")
+
+  attempt  TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id])
+
+  @@map("test_answers")
+}
+
+// ============================================================
+//  Certificates, notifications, audit
+// ============================================================
+model Certificate {
+  id                String   @id @default(uuid()) @db.Uuid
+  enrollmentId      String   @unique @map("enrollment_id") @db.Uuid
+  certificateNumber String   @unique @map("certificate_number")
+  fileId            String?  @map("file_id") @db.Uuid
+  issuedAt          DateTime @default(now()) @map("issued_at")
+
+  enrollment Enrollment  @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  file       MediaAsset? @relation(fields: [fileId], references: [id])
+
+  @@map("certificates")
+}
+
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  type      String
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id") @db.Uuid
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@map("activity_logs")
+}
