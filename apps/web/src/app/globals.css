@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 255 255 255;
+  --fg: 15 23 42;
+  --muted: 100 116 139;
+  --card: 248 250 252;
+  --border: 226 232 240;
+  --accent: 79 70 229;
+}
+
+.dark {
+  --bg: 8 11 20;
+  --fg: 226 232 240;
+  --muted: 148 163 184;
+  --card: 20 25 38;
+  --border: 38 45 62;
+  --accent: 129 140 248;
+}
+
+html,
+body {
+  background-color: rgb(var(--bg));
+  color: rgb(var(--fg));
+}
+
+/* Smooth colour morph only while a theme switch is in progress (keeps hovers snappy). */
+.theme-transitioning * {
+  transition:
+    background-color 0.6s ease,
+    border-color 0.6s ease,
+    color 0.6s ease,
+    fill 0.6s ease !important;
+}
