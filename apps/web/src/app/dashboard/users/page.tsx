@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth, type AuthUser } from '@/components/auth-provider'
 import { UserCard } from '@/components/dashboard/user-card'
 import { Select } from '@/components/ui/select'
-import { apiGet, apiPatch, apiPost } from '@/lib/api'
+import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api'
 
 type Filter = 'all' | 'employee' | 'manager' | 'admin'
 
@@ -127,6 +127,11 @@ export default function UsersPage() {
     }
   }
 
+  async function deleteUser(u: AuthUser) {
+    await apiDelete(`/users/${u.id}`)
+    setUsers((cur) => cur.filter((x) => x.id !== u.id))
+  }
+
   const filters: { key: Filter; label: string }[] = isAdmin
     ? [
         { key: 'all', label: 'All' },
@@ -203,7 +208,15 @@ export default function UsersPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((u) => (
-            <UserCard key={u.id} user={u} managers={managers} canManage={!!isAdmin} onReassign={reassign} />
+            <UserCard
+              key={u.id}
+              user={u}
+              managers={managers}
+              canManage={!!isAdmin}
+              currentUserId={user?.id}
+              onReassign={reassign}
+              onDelete={isAdmin ? deleteUser : undefined}
+            />
           ))}
         </div>
       )}

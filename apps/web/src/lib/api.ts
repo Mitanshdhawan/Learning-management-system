@@ -56,3 +56,18 @@ export async function uploadAvatar<T>(file: Blob, filename = 'avatar.jpg'): Prom
   if (!res.ok) throw new Error(data?.error ?? 'Upload failed')
   return data
 }
+
+/** Multipart upload of an image/video to the generic media endpoint. */
+export async function uploadMedia<T>(file: File): Promise<T> {
+  const token = storedToken()
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch(`${BASE}/media`, {
+    method: 'POST',
+    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    body: fd,
+  })
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string }
+  if (!res.ok) throw new Error(data?.error ?? 'Upload failed')
+  return data
+}

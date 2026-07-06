@@ -2,15 +2,18 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { Menu } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { Avatar } from '@/components/avatar'
 import { Sidebar } from '@/components/dashboard/sidebar'
+import { Logo } from '@/components/logo'
 import { ThemeToggle } from '@/components/theme-toggle'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useAuth()
   const router = useRouter()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login')
@@ -24,12 +27,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen">
       <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-          <Link href="/dashboard" className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-sm text-white shadow-sm shadow-accent/30">
-              T
-            </span>
-            TOP LMS
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(true)}
+              aria-label="Open menu"
+              className="-ml-1 rounded-lg p-2 text-muted transition duration-200 hover:bg-card hover:text-foreground md:hidden"
+            >
+              <Menu size={20} />
+            </button>
+            <Link href="/dashboard" className="flex items-center" aria-label="TOP — The Outsource Pro">
+              <Logo className="h-9" />
+            </Link>
+          </div>
           <div className="flex items-center gap-2 text-sm">
             <Link
               href="/dashboard/profile"
@@ -51,7 +61,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </header>
 
       <div className="mx-auto flex max-w-7xl">
-        <Sidebar />
+        <Sidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
         <main className="min-w-0 flex-1 px-6 py-8">{children}</main>
       </div>
     </div>

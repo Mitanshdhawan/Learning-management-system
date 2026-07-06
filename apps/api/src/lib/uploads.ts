@@ -58,3 +58,52 @@ export async function saveImage(file: Express.Multer.File, folder: string): Prom
   }
   return { provider: 'local', storageKey: file.filename }
 }
+
+// Accepts images, videos, and PDFs (larger limit) — used by the generic /media endpoint.
+// PDFs are the only document type allowed because browsers render them inline (no forced download).
+export const uploadMedia = multer({
+  storage,
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200 MB
+  fileFilter: (_req, file, cb) => {
+    if (
+      file.mimetype.startsWith('image/') ||
+      file.mimetype.startsWith('video/') ||
+      file.mimetype === 'application/pdf'
+    )
+      cb(null, true)
+    else cb(new Error('Only images, videos, or PDF files are allowed'))
+  },
+})
+
+export interface StoredMedia extends StoredImage {
+  kind: 'image' | 'video' | 'document'
+  durationSeconds?: number
+}
+
+export async function saveMedia(file: Express.Multer.File, folder: string): Promise<StoredMedia> {
+  const isVideo = file.mimetype.startsWith('video/')
+  const kind: 'image' | 'video' | 'document' = isVideo
+    ? 'video'
+    : file.mimetype.startsWith('image/')
+      ? 'image'
+      : 'document'
+
+  const creds = cloudinaryCreds()
+  if (creds) {
+    cloudinary.config(creds)
+    const result = await cloudinary.uploader.upload(file.path, {
+      folder: `toplms/${folder}`,
+      resource_type: isVideo ? 'video' : 'image',
+    })
+    await unlink(file.path).catch(() => {})
+    return {
+      provider: 'cloudinary',
+      storageKey: result.public_id,
+      kind,
+      width: result.width,
+      height: result.height,
+      durationSeconds: result.duration ? Math.round(result.duration) : undefined,
+    }
+  }
+  return { provider: 'local', storageKey: file.filename, kind }
+}

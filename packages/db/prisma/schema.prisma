@@ -32,6 +32,13 @@ enum CourseStatus {
   archived
 }
 
+enum CourseLevel {
+  beginner
+  intermediate
+  advanced
+  all_levels
+}
+
 enum LessonType {
   video
   reading
@@ -92,8 +99,9 @@ model MediaAsset {
 
   uploadedBy       User?            @relation("UploadedMedia", fields: [uploadedById], references: [id])
   avatarUsers      User[]           @relation("UserAvatar")
-  courseThumbnails Course[]         @relation("CourseThumbnail")
-  lessonVideos     Lesson[]         @relation("LessonVideo")
+  courseThumbnails    Course[]         @relation("CourseThumbnail")
+  coursePreviewVideos Course[]         @relation("CoursePreviewVideo")
+  lessonVideos        Lesson[]         @relation("LessonVideo")
   lessonResources  LessonResource[]
   certificates     Certificate[]
 
@@ -177,6 +185,12 @@ model Course {
   title              String
   slug               String       @unique
   description        String?
+  subtitle           String?
+  language           String       @default("English")
+  level              CourseLevel  @default(all_levels)
+  learningOutcomes   String[]     @map("learning_outcomes")
+  requirements       String[]
+  previewVideoId     String?      @map("preview_video_id") @db.Uuid
   thumbnailId        String?      @map("thumbnail_id") @db.Uuid
   categoryId         String?      @map("category_id") @db.Uuid
   createdById        String       @map("created_by") @db.Uuid
@@ -187,8 +201,9 @@ model Course {
   createdAt          DateTime     @default(now()) @map("created_at")
   updatedAt          DateTime     @updatedAt @map("updated_at")
 
-  thumbnail MediaAsset? @relation("CourseThumbnail", fields: [thumbnailId], references: [id])
-  category  Category?   @relation(fields: [categoryId], references: [id])
+  thumbnail    MediaAsset? @relation("CourseThumbnail", fields: [thumbnailId], references: [id])
+  previewVideo MediaAsset? @relation("CoursePreviewVideo", fields: [previewVideoId], references: [id])
+  category     Category?   @relation(fields: [categoryId], references: [id])
   createdBy User        @relation("CourseCreatedBy", fields: [createdById], references: [id])
 
   modules     Module[]
@@ -220,8 +235,9 @@ model Lesson {
   title       String
   type        LessonType @default(video)
   position    Int
-  videoId     String?    @map("video_id") @db.Uuid
-  contentHtml String?    @map("content_html")
+  videoId              String?    @map("video_id") @db.Uuid
+  videoDurationSeconds Int?       @map("video_duration_seconds")
+  contentHtml          String?    @map("content_html")
   isPreview   Boolean    @default(false) @map("is_preview")
 
   module    Module           @relation(fields: [moduleId], references: [id], onDelete: Cascade)

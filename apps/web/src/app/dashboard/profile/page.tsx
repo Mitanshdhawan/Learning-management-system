@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useAuth, type AuthUser } from '@/components/auth-provider'
 import { Avatar } from '@/components/avatar'
 import { AvatarCropModal } from '@/components/avatar-crop-modal'
+import { ConfirmDeleteModal } from '@/components/ui/confirm-delete-modal'
 import { Select } from '@/components/ui/select'
 import { apiDelete, apiGet, apiPatch, uploadAvatar } from '@/lib/api'
 
@@ -30,6 +31,7 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [cropFile, setCropFile] = useState<File | null>(null)
+  const [showDelete, setShowDelete] = useState(false)
 
   useEffect(() => {
     setName(user?.fullName ?? '')
@@ -67,18 +69,6 @@ export default function ProfilePage() {
   async function onCropped(blob: Blob) {
     setCropFile(null)
     await run(() => uploadAvatar(blob), 'Upload failed')
-  }
-
-  async function deleteAccount() {
-    if (!window.confirm('Delete your account? This cannot be undone.')) return
-    setError(null)
-    try {
-      await apiDelete(`/users/${user!.id}`)
-      await signOut()
-      router.push('/login')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete account')
-    }
   }
 
   return (
@@ -196,7 +186,7 @@ export default function ProfilePage() {
         <p className="mt-1 text-sm text-muted">Permanently remove this account. This cannot be undone.</p>
         <button
           type="button"
-          onClick={deleteAccount}
+          onClick={() => setShowDelete(true)}
           disabled={locked}
           className="mt-4 rounded-lg border border-red-500/50 px-4 py-2 text-sm font-medium text-red-500 transition duration-200 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -211,6 +201,22 @@ export default function ProfilePage() {
 
       {cropFile && (
         <AvatarCropModal file={cropFile} onCancel={() => setCropFile(null)} onCropped={onCropped} />
+      )}
+
+      {showDelete && (
+        <ConfirmDeleteModal
+          title="Delete your account?"
+          confirmText={user.email}
+          confirmHint="Your email"
+          description="This permanently deletes your account and signs you out. This cannot be undone."
+          confirmLabel="Delete account"
+          onCancel={() => setShowDelete(false)}
+          onConfirm={async () => {
+            await apiDelete(`/users/${user!.id}`)
+            await signOut()
+            router.push('/login')
+          }}
+        />
       )}
     </div>
   )

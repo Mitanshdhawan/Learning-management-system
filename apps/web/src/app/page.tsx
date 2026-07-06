@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { AuthStatus } from '@/components/auth-status'
+import { Logo } from '@/components/logo'
 import { ThemeToggle } from '@/components/theme-toggle'
 
 const features = [
@@ -12,9 +13,8 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
-        <div className="flex items-center gap-2 font-semibold tracking-tight">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-sm text-white">T</span>
-          TOP LMS
+        <div className="flex items-center">
+          <Logo className="h-8" />
         </div>
         <div className="flex items-center gap-4">
           <AuthStatus />

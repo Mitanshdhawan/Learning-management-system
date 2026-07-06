@@ -1,7 +1,10 @@
 'use client'
 
+import { Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import { type AuthUser } from '@/components/auth-provider'
 import { Avatar } from '@/components/avatar'
+import { ConfirmDeleteModal } from '@/components/ui/confirm-delete-modal'
 import { Select } from '@/components/ui/select'
 
 const roleBadge: Record<string, string> = {
@@ -14,12 +17,28 @@ interface Props {
   user: AuthUser
   managers: AuthUser[]
   canManage: boolean
+  currentUserId?: string
   onReassign: (userId: string, managerId: string | null) => void
+  onDelete?: (user: AuthUser) => Promise<void>
 }
 
-export function UserCard({ user, managers, canManage, onReassign }: Props) {
+export function UserCard({ user, managers, canManage, currentUserId, onReassign, onDelete }: Props) {
+  const [showDelete, setShowDelete] = useState(false)
+  const canDelete = canManage && !!onDelete && user.id !== currentUserId
+
   return (
-    <div className="group rounded-2xl border border-border bg-card p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-accent/50 hover:shadow-xl hover:shadow-accent/5">
+    <div className="group relative rounded-2xl border border-border bg-card p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-accent/50 hover:shadow-xl hover:shadow-accent/5">
+      {canDelete && (
+        <button
+          type="button"
+          onClick={() => setShowDelete(true)}
+          aria-label={`Delete ${user.email}`}
+          className="absolute right-3 top-3 rounded-lg p-1.5 text-muted transition duration-200 hover:bg-red-500/10 hover:text-red-500"
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
+
       <div className="flex items-center gap-4">
         <div className="transition duration-200 group-hover:scale-105">
           <Avatar user={user} size={56} />
@@ -56,6 +75,24 @@ export function UserCard({ user, managers, canManage, onReassign }: Props) {
             ]}
           />
         </div>
+      )}
+
+      {showDelete && onDelete && (
+        <ConfirmDeleteModal
+          title="Delete this user?"
+          confirmText={user.email}
+          confirmHint="User's email"
+          description={
+            <>
+              This permanently deletes{' '}
+              <span className="font-medium text-foreground">{user.fullName ?? user.email}</span> and revokes their
+              access. This cannot be undone.
+            </>
+          }
+          confirmLabel="Delete user"
+          onCancel={() => setShowDelete(false)}
+          onConfirm={() => onDelete(user)}
+        />
       )}
     </div>
   )

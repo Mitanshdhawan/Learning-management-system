@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useAuth, type AuthUser } from '@/components/auth-provider'
+import { Logo } from '@/components/logo'
 import { useTheme } from '@/components/theme-provider'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { apiPost } from '@/lib/api'
@@ -39,8 +40,8 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen">
       <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
-        <Link href="/" className="font-semibold tracking-tight">
-          TOP LMS
+        <Link href="/" aria-label="TOP — The Outsource Pro">
+          <Logo className="h-8" />
         </Link>
         <ThemeToggle />
       </header>

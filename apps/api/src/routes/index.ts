@@ -1,8 +1,14 @@
 import { Router } from 'express'
 import { adminRouter } from './admin'
 import { authRouter } from './auth'
+import { categoriesRouter } from './categories'
+import { coursesRouter } from './courses'
 import { healthRouter } from './health'
 import { invitationsRouter } from './invitations'
+import { lessonsRouter } from './lessons'
+import { mediaRouter } from './media'
+import { modulesRouter } from './modules'
+import { resourcesRouter } from './resources'
 import { usersRouter } from './users'
 
 export const apiRouter = Router()
@@ -12,3 +18,9 @@ apiRouter.use('/auth', authRouter)
 apiRouter.use('/invitations', invitationsRouter)
 apiRouter.use('/users', usersRouter)
 apiRouter.use('/admin', adminRouter)
+apiRouter.use('/categories', categoriesRouter)
+apiRouter.use('/courses', coursesRouter)
+apiRouter.use('/modules', modulesRouter)
+apiRouter.use('/lessons', lessonsRouter)
+apiRouter.use('/resources', resourcesRouter)
+apiRouter.use('/media', mediaRouter)
