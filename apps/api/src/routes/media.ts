@@ -28,7 +28,7 @@ mediaRouter.post('/', requireAuth, uploadMedia.single('file'), async (req, res) 
   })
 
   res.status(201).json({
-    media: {
+    media: { 
       id: media.id,
       provider: media.provider,
       storageKey: media.storageKey,
