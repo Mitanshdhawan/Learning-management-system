@@ -89,6 +89,12 @@ export const lessonResourceCreateSchema = z.object({
 })
 export type LessonResourceCreateInput = z.infer<typeof lessonResourceCreateSchema>
 
+// Mark a lesson complete / incomplete for the current learner.
+export const lessonProgressSchema = z.object({
+  completed: z.boolean(),
+})
+export type LessonProgressInput = z.infer<typeof lessonProgressSchema>
+
 // ---- Profile / preferences ----
 export const themeSchema = z.enum(['light', 'dark'])
 export type ThemeValue = z.infer<typeof themeSchema>

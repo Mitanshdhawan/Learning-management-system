@@ -107,3 +107,16 @@ export async function saveMedia(file: Express.Multer.File, folder: string): Prom
   }
   return { provider: 'local', storageKey: file.filename, kind }
 }
+
+/** Remove a stored file from Cloudinary (or local disk). Best-effort — never throws. */
+export async function deleteStoredMedia(media: { provider: string; storageKey: string; kind: string }): Promise<void> {
+  if (media.provider === 'cloudinary') {
+    const creds = cloudinaryCreds()
+    if (!creds) return
+    cloudinary.config(creds)
+    const resource_type = media.kind === 'video' ? 'video' : 'image'
+    await cloudinary.uploader.destroy(media.storageKey, { resource_type }).catch(() => {})
+  } else if (media.provider === 'local') {
+    await unlink(join(uploadsDir, media.storageKey)).catch(() => {})
+  }
+}

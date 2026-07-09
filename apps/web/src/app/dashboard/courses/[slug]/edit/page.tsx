@@ -6,22 +6,10 @@ import { ChevronLeft, Eye, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { CourseDetailsForm, type CourseDetailsFormHandle } from '@/components/courses/course-details-form'
-import { CurriculumEditor } from '@/components/courses/curriculum-editor'
+import { CurriculumEditor, type CurriculumHandle } from '@/components/courses/curriculum-editor'
 import { ConfirmDeleteModal } from '@/components/ui/confirm-delete-modal'
 import { apiDelete, apiGet, apiPatch } from '@/lib/api'
 import { type CourseDetail } from '@/lib/courses'
-
-/** Lecture titles that can't be published yet — a video without a file, or a reading without a PDF. */
-function incompleteLessons(course: CourseDetail): string[] {
-  const bad: string[] = []
-  for (const m of course.modules) {
-    for (const l of m.lessons) {
-      const missing = l.type === 'video' ? !l.video : l.resources.length === 0
-      if (missing) bad.push(l.title.trim() || 'Untitled lecture')
-    }
-  }
-  return bad
-}
 
 export default function CourseBuilderPage() {
   const params = useParams<{ slug: string }>()
@@ -35,7 +23,10 @@ export default function CourseBuilderPage() {
   const [savedFlash, setSavedFlash] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
+  const [curriculumDirty, setCurriculumDirty] = useState(false)
+  const [curriculumVersion, setCurriculumVersion] = useState(0)
   const formRef = useRef<CourseDetailsFormHandle>(null)
+  const curriculumRef = useRef<CurriculumHandle>(null)
 
   const load = useCallback(async () => {
     const { course } = await apiGet<{ course: CourseDetail }>(`/courses/${params.slug}`)
@@ -55,6 +46,17 @@ export default function CourseBuilderPage() {
       .catch(() => {})
   }, [load, user])
 
+  // Warn before leaving with unsaved curriculum changes.
+  useEffect(() => {
+    if (!curriculumDirty) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [curriculumDirty])
+
   if (loading) return <p className="text-sm text-muted">Loading…</p>
 
   if (denied || !course) {
@@ -71,28 +73,27 @@ export default function CourseBuilderPage() {
   const isPublished = course.status === 'published'
   const canCreateCategory = user?.role === 'admin'
 
-  // The single primary action: save the details form, then (for a draft) publish.
+  // The single primary action: persist the details form AND every pending curriculum change,
+  // then (for a draft with all media in place) publish.
   async function saveDetails(publish: boolean) {
     setPublishError(null)
+    // Every video/reading lecture must have its file uploaded before anything is saved.
+    const valid = curriculumRef.current?.validate() ?? true
+    if (!valid) {
+      setPublishError('Some lectures still need their video or PDF — upload the highlighted ones, then save.')
+      return
+    }
     setSaving(true)
     try {
       await formRef.current?.save()
-      if (publish) {
-        const missing = incompleteLessons(course!)
-        if (missing.length) {
-          setPublishError(
-            `Upload the missing file for ${missing.length} lecture${missing.length > 1 ? 's' : ''} before publishing: ${missing.join(', ')}.`,
-          )
-          await load()
-          return
-        }
-        await apiPatch(`/courses/${course!.id}`, { status: 'published' })
-      }
+      await curriculumRef.current?.commit()
+      if (publish) await apiPatch(`/courses/${course!.id}`, { status: 'published' })
       await load()
+      setCurriculumVersion((v) => v + 1) // remount the editor → reset the draft from fresh data
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 2000)
-    } catch {
-      /* the form surfaces its own validation error */
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : 'Could not save your changes. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -187,7 +188,12 @@ export default function CourseBuilderPage() {
         }
         onSaved={load}
       />
-      <CurriculumEditor course={course} onRefresh={load} />
+      <CurriculumEditor
+        key={curriculumVersion}
+        ref={curriculumRef}
+        course={course}
+        onDirtyChange={setCurriculumDirty}
+      />
 
       {showDelete && (
         <ConfirmDeleteModal

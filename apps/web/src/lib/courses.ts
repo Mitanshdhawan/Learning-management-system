@@ -63,6 +63,13 @@ export interface CourseDetail extends CourseSummary {
   modules: CourseModule[]
 }
 
+export interface CourseEnrollment {
+  id: string
+  progressPercent: number
+  status: string
+  completedLessonIds: string[]
+}
+
 export interface CourseStats {
   moduleCount: number
   lectureCount: number

@@ -1,17 +1,68 @@
 'use client'
 
 import { Eye, FileText, PlayCircle, Plus, Trash2, Upload, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { MediaViewerModal } from '@/components/courses/media-viewer-modal'
 import { Select } from '@/components/ui/select'
-import { apiDelete, apiPatch, apiPost, uploadMedia } from '@/lib/api'
-import {
-  type CourseDetail,
-  type CourseLesson,
-  type CourseModule,
-  formatLectureTime,
-  mediaUrl,
-} from '@/lib/courses'
+import { API_ORIGIN, apiDelete, apiPatch, apiPost, uploadMedia } from '@/lib/api'
+import { type CourseDetail, type CourseMedia, formatLectureTime, mediaUrl } from '@/lib/courses'
+
+// ----- Draft model: everything is edited locally and only persisted on commit() -----
+
+interface DraftResource {
+  id: string
+  title: string | null
+  media: CourseMedia
+  isNew: boolean
+}
+interface DraftLesson {
+  id: string
+  isNew: boolean
+  serverTitle: string
+  title: string
+  type: 'video' | 'reading'
+  video: CourseMedia | null
+  videoDurationSeconds: number | null
+  videoDirty: boolean
+  resources: DraftResource[]
+  removedResourceIds: string[]
+}
+interface DraftModule {
+  id: string
+  isNew: boolean
+  serverTitle: string
+  title: string
+  lessons: DraftLesson[]
+}
+
+export interface CurriculumHandle {
+  hasChanges: () => boolean
+  /** Reveal inline errors on lectures missing their file; returns true if every lecture has its asset. */
+  validate: () => boolean
+  /** Persist every pending change. Throws on failure. */
+  commit: () => Promise<void>
+}
+
+function initModules(course: CourseDetail): DraftModule[] {
+  return course.modules.map((m) => ({
+    id: m.id,
+    isNew: false,
+    serverTitle: m.title,
+    title: m.title,
+    lessons: m.lessons.map((l) => ({
+      id: l.id,
+      isNew: false,
+      serverTitle: l.title,
+      title: l.title,
+      type: l.type,
+      video: l.video,
+      videoDurationSeconds: l.videoDurationSeconds,
+      videoDirty: false,
+      resources: l.resources.map((r) => ({ id: r.id, title: r.title, media: r.media, isNew: false })),
+      removedResourceIds: [],
+    })),
+  }))
+}
 
 /** Read a video file's duration (seconds) in the browser, before upload. */
 function readVideoDuration(file: File): Promise<number | null> {
@@ -35,92 +86,52 @@ function readVideoDuration(file: File): Promise<number | null> {
   })
 }
 
-/** In-app viewer — plays a video or renders a PDF inside a modal (never a new tab). */
-function MediaViewerModal({
-  url,
-  kind,
-  title,
-  onClose,
-}: {
-  url: string
-  kind: 'video' | 'document'
-  title: string
-  onClose: () => void
-}) {
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
-  if (!mounted) return null
-
-  return createPortal(
-    <div className="fixed inset-0 z-[200] grid place-items-center bg-black/70 p-4" onMouseDown={onClose}>
-      <div
-        className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-          <span className="truncate text-sm font-medium">{title}</span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close viewer"
-            className="rounded-lg p-1.5 text-muted transition hover:bg-background hover:text-foreground"
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1">
-          {kind === 'video' ? (
-            // eslint-disable-next-line jsx-a11y/media-has-caption
-            <video src={url} controls autoPlay className="max-h-[78vh] w-full bg-black" />
-          ) : (
-            <iframe src={url} title={title} className="h-[78vh] w-full bg-white" />
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body,
-  )
+function mediaFromUpload(m: { id: string; provider: string; storageKey: string; durationSeconds: number | null }, kind: 'video' | 'document', fileName: string): CourseMedia {
+  return { id: m.id, provider: m.provider, storageKey: m.storageKey, durationSeconds: m.durationSeconds, fileName, kind }
 }
 
-function LessonRow({ lesson, onRefresh }: { lesson: CourseLesson; onRefresh: () => void }) {
-  const [title, setTitle] = useState(lesson.title)
-  const [preview, setPreview] = useState(lesson.isPreview)
+function LessonRow({
+  lesson,
+  isPreview,
+  showValidation,
+  onChange,
+  onSetPreview,
+  onRemove,
+  registerUpload,
+  discardMedia,
+}: {
+  lesson: DraftLesson
+  isPreview: boolean
+  showValidation: boolean
+  onChange: (patch: Partial<DraftLesson>) => void
+  onSetPreview: (id: string | null) => void
+  onRemove: () => void
+  registerUpload: (id: string) => void
+  discardMedia: (id: string) => void
+}) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [viewer, setViewer] = useState<{ url: string; kind: 'video' | 'document'; title: string } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  async function patch(data: Record<string, unknown>) {
-    try {
-      await apiPatch(`/lessons/${lesson.id}`, data)
-    } catch {
-      /* ignore */
-    }
-  }
-
   async function onVideoPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (fileRef.current) fileRef.current.value = ''
     if (!file) return
-    if (!file.type.startsWith('video/')) {
-      setError('Please choose a video file.')
-      return
-    }
+    if (!file.type.startsWith('video/')) return setError('Please choose a video file.')
     setError(null)
     setBusy(true)
+    const previous = lesson.video
     try {
       const clientDuration = await readVideoDuration(file)
-      const { media } = await uploadMedia<{ media: { id: string; durationSeconds: number | null } }>(file)
-      await apiPatch(`/lessons/${lesson.id}`, {
-        videoId: media.id,
+      const { media } = await uploadMedia<{ media: { id: string; provider: string; storageKey: string; durationSeconds: number | null } }>(file)
+      onChange({
+        video: mediaFromUpload(media, 'video', file.name),
         videoDurationSeconds: media.durationSeconds ?? clientDuration ?? null,
+        videoDirty: true,
       })
-      onRefresh()
+      registerUpload(media.id)
+      if (previous?.id) discardMedia(previous.id) // drop a staged video it replaces
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
@@ -132,16 +143,19 @@ function LessonRow({ lesson, onRefresh }: { lesson: CourseLesson; onRefresh: () 
     const file = e.target.files?.[0]
     if (fileRef.current) fileRef.current.value = ''
     if (!file) return
-    if (file.type !== 'application/pdf') {
-      setError('Only PDFs can be read in the browser — please upload a PDF.')
-      return
-    }
+    if (file.type !== 'application/pdf') return setError('Only PDFs can be read in the browser — please upload a PDF.')
     setError(null)
     setBusy(true)
     try {
-      const { media } = await uploadMedia<{ media: { id: string } }>(file)
-      await apiPost(`/lessons/${lesson.id}/resources`, { mediaId: media.id, title: file.name })
-      onRefresh()
+      const { media } = await uploadMedia<{ media: { id: string; provider: string; storageKey: string; durationSeconds: number | null } }>(file)
+      const resource: DraftResource = {
+        id: `tmpres_${media.id}`,
+        title: file.name,
+        media: mediaFromUpload(media, 'document', file.name),
+        isNew: true,
+      }
+      onChange({ resources: [...lesson.resources, resource] })
+      registerUpload(media.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
@@ -149,16 +163,20 @@ function LessonRow({ lesson, onRefresh }: { lesson: CourseLesson; onRefresh: () 
     }
   }
 
-  async function removeResource(resourceId: string) {
-    await apiDelete(`/resources/${resourceId}`)
-    onRefresh()
+  function removeResource(r: DraftResource) {
+    onChange({
+      resources: lesson.resources.filter((x) => x.id !== r.id),
+      removedResourceIds: r.isNew ? lesson.removedResourceIds : [...lesson.removedResourceIds, r.id],
+    })
+    discardMedia(r.media.id) // deletes it only if it was a staged (unsaved) upload
   }
 
   const isVideo = lesson.type === 'video'
   const videoUrl = mediaUrl(lesson.video)
+  const showMissing = showValidation && (isVideo ? !lesson.video : lesson.resources.length === 0)
 
   return (
-    <div className="py-2 pl-10 pr-3">
+    <div className={`py-2 pl-10 pr-3 ${showMissing ? 'bg-red-500/[0.05]' : ''}`}>
       <div className="flex flex-wrap items-center gap-2">
         {isVideo ? (
           <PlayCircle size={15} className="shrink-0 text-muted" />
@@ -166,29 +184,29 @@ function LessonRow({ lesson, onRefresh }: { lesson: CourseLesson; onRefresh: () 
           <FileText size={15} className="shrink-0 text-muted" />
         )}
         <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => title.trim() && title !== lesson.title && patch({ title: title.trim() })}
+          value={lesson.title}
+          onChange={(e) => onChange({ title: e.target.value })}
           className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm outline-none transition hover:border-border focus:border-accent"
         />
-        <label className="flex items-center gap-1 text-xs text-muted">
-          <input
-            type="checkbox"
-            checked={preview}
-            onChange={(e) => {
-              setPreview(e.target.checked)
-              patch({ isPreview: e.target.checked })
-            }}
-            className="accent-accent"
-          />
-          Preview
-        </label>
+        {isVideo && (
+          <label
+            className="flex items-center gap-1 text-xs text-muted"
+            title="Only one video across the whole course can be the free preview"
+          >
+            <input
+              type="radio"
+              name="course-preview"
+              checked={isPreview}
+              onChange={() => onSetPreview(lesson.id)}
+              onClick={() => isPreview && onSetPreview(null)}
+              className="accent-accent"
+            />
+            Preview
+          </label>
+        )}
         <button
           type="button"
-          onClick={async () => {
-            await apiDelete(`/lessons/${lesson.id}`)
-            onRefresh()
-          }}
+          onClick={onRemove}
           className="text-muted transition hover:text-red-500"
           aria-label="Delete lecture"
         >
@@ -196,7 +214,7 @@ function LessonRow({ lesson, onRefresh }: { lesson: CourseLesson; onRefresh: () 
         </button>
       </div>
 
-      {/* Media area — upload the actual video (auto-duration) or an inline-viewable PDF */}
+      {/* Media area */}
       <div className="mt-1.5 flex flex-wrap items-center gap-2 pl-6 text-xs">
         {isVideo ? (
           <>
@@ -245,14 +263,9 @@ function LessonRow({ lesson, onRefresh }: { lesson: CourseLesson; onRefresh: () 
             {lesson.resources.map((r) => {
               const url = mediaUrl(r.media)
               return (
-                <span
-                  key={r.id}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1"
-                >
+                <span key={r.id} className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1">
                   <FileText size={13} className="text-accent" />
-                  <span className="max-w-[180px] truncate text-foreground">
-                    {r.title ?? r.media.fileName ?? 'Document'}
-                  </span>
+                  <span className="max-w-[180px] truncate text-foreground">{r.title ?? r.media.fileName ?? 'Document'}</span>
                   {url && (
                     <button
                       type="button"
@@ -264,7 +277,7 @@ function LessonRow({ lesson, onRefresh }: { lesson: CourseLesson; onRefresh: () 
                   )}
                   <button
                     type="button"
-                    onClick={() => removeResource(r.id)}
+                    onClick={() => removeResource(r)}
                     className="text-muted transition hover:text-red-500"
                     aria-label="Remove file"
                   >
@@ -284,6 +297,11 @@ function LessonRow({ lesson, onRefresh }: { lesson: CourseLesson; onRefresh: () 
           </>
         )}
         {error && <span className="text-red-500">{error}</span>}
+        {showMissing && (
+          <span className="font-medium text-red-500">
+            {isVideo ? '⚠ Upload a video for this lecture' : '⚠ Upload a PDF for this lecture'}
+          </span>
+        )}
       </div>
 
       {viewer && (
@@ -293,28 +311,16 @@ function LessonRow({ lesson, onRefresh }: { lesson: CourseLesson; onRefresh: () 
   )
 }
 
-function AddLesson({ moduleId, onRefresh }: { moduleId: string; onRefresh: () => void }) {
+function AddLesson({ onAdd }: { onAdd: (title: string, type: 'video' | 'reading') => void }) {
   const [title, setTitle] = useState('')
   const [type, setType] = useState<'video' | 'reading'>('video')
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function add() {
-    if (!title.trim()) {
-      setError('Enter a lecture name.')
-      return
-    }
+  function add() {
+    if (!title.trim()) return setError('Enter a lecture name.')
+    onAdd(title.trim(), type)
+    setTitle('')
     setError(null)
-    setBusy(true)
-    try {
-      await apiPost(`/modules/${moduleId}/lessons`, { title: title.trim(), type })
-      setTitle('')
-      onRefresh()
-    } catch {
-      /* ignore */
-    } finally {
-      setBusy(false)
-    }
   }
 
   return (
@@ -344,8 +350,7 @@ function AddLesson({ moduleId, onRefresh }: { moduleId: string; onRefresh: () =>
         <button
           type="button"
           onClick={add}
-          disabled={busy}
-          className="inline-flex items-center gap-1 rounded-md bg-accent/15 px-2.5 py-1 text-sm text-accent transition hover:bg-accent/25 disabled:opacity-60"
+          className="inline-flex items-center gap-1 rounded-md bg-accent/15 px-2.5 py-1 text-sm text-accent transition hover:bg-accent/25"
         >
           <Plus size={14} /> Add
         </button>
@@ -355,34 +360,42 @@ function AddLesson({ moduleId, onRefresh }: { moduleId: string; onRefresh: () =>
   )
 }
 
-function ModuleBlock({ module, onRefresh }: { module: CourseModule; onRefresh: () => void }) {
-  const [title, setTitle] = useState(module.title)
+function ModuleBlock({
+  module,
+  previewId,
+  showValidation,
+  onChange,
+  onRemove,
+  onRemoveLesson,
+  onSetPreview,
+  registerUpload,
+  discardMedia,
+}: {
+  module: DraftModule
+  previewId: string | null
+  showValidation: boolean
+  onChange: (patch: Partial<DraftModule>) => void
+  onRemove: () => void
+  onRemoveLesson: (lesson: DraftLesson) => void
+  onSetPreview: (id: string | null) => void
+  registerUpload: (id: string) => void
+  discardMedia: (id: string) => void
+}) {
+  function updateLesson(lessonId: string, patch: Partial<DraftLesson>) {
+    onChange({ lessons: module.lessons.map((l) => (l.id === lessonId ? { ...l, ...patch } : l)) })
+  }
 
   return (
     <div className="rounded-xl border border-border bg-background">
       <div className="flex items-center gap-2 border-b border-border px-4 py-3">
         <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={async () => {
-            if (title.trim() && title !== module.title) {
-              try {
-                await apiPatch(`/modules/${module.id}`, { title: title.trim() })
-              } catch {
-                /* ignore */
-              }
-            }
-          }}
+          value={module.title}
+          onChange={(e) => onChange({ title: e.target.value })}
           className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 font-semibold outline-none transition hover:border-border focus:border-accent"
         />
         <button
           type="button"
-          onClick={async () => {
-            if (window.confirm('Delete this section and its lectures?')) {
-              await apiDelete(`/modules/${module.id}`)
-              onRefresh()
-            }
-          }}
+          onClick={onRemove}
           className="text-muted transition hover:text-red-500"
           aria-label="Delete section"
         >
@@ -391,44 +404,254 @@ function ModuleBlock({ module, onRefresh }: { module: CourseModule; onRefresh: (
       </div>
       <div className="divide-y divide-border">
         {module.lessons.map((l) => (
-          <LessonRow key={l.id} lesson={l} onRefresh={onRefresh} />
+          <LessonRow
+            key={l.id}
+            lesson={l}
+            isPreview={previewId === l.id}
+            showValidation={showValidation}
+            onChange={(patch) => updateLesson(l.id, patch)}
+            onSetPreview={onSetPreview}
+            onRemove={() => onRemoveLesson(l)}
+            registerUpload={registerUpload}
+            discardMedia={discardMedia}
+          />
         ))}
-        <AddLesson moduleId={module.id} onRefresh={onRefresh} />
+        <AddLesson
+          onAdd={(title, type) =>
+            onChange({
+              lessons: [
+                ...module.lessons,
+                {
+                  id: `tmp_${title}_${module.lessons.length}_${Math.round(performance.now())}`,
+                  isNew: true,
+                  serverTitle: '',
+                  title,
+                  type,
+                  video: null,
+                  videoDurationSeconds: null,
+                  videoDirty: false,
+                  resources: [],
+                  removedResourceIds: [],
+                },
+              ],
+            })
+          }
+        />
       </div>
     </div>
   )
 }
 
-export function CurriculumEditor({ course, onRefresh }: { course: CourseDetail; onRefresh: () => void }) {
+export const CurriculumEditor = forwardRef<
+  CurriculumHandle,
+  { course: CourseDetail; onDirtyChange?: (dirty: boolean) => void }
+>(function CurriculumEditor({ course, onDirtyChange }, ref) {
+  const [modules, setModules] = useState<DraftModule[]>(() => initModules(course))
+  const [previewId, setPreviewId] = useState<string | null>(
+    () => course.modules.flatMap((m) => m.lessons).find((l) => l.isPreview)?.id ?? null,
+  )
+  const removed = useRef<{ modules: string[]; lessons: string[] }>({ modules: [], lessons: [] })
+  const serverPreviewId = useRef<string | null>(previewId)
+  const pending = useRef<Set<string>>(new Set()) // media uploaded this session, not yet saved
+  const orphanOnSave = useRef<Set<string>>(new Set()) // saved files a replace/remove will orphan once saved
+  const committedRef = useRef(false)
+  const [dirty, setDirty] = useState(false)
   const [moduleTitle, setModuleTitle] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [addError, setAddError] = useState<string | null>(null)
+  const [showValidation, setShowValidation] = useState(false) // reveal per-lecture "missing file" errors after a save attempt
 
-  async function addModule() {
-    if (!moduleTitle.trim()) {
-      setError('Enter a section name.')
-      return
-    }
-    setError(null)
-    setBusy(true)
-    try {
-      await apiPost(`/courses/${course.id}/modules`, { title: moduleTitle.trim() })
-      setModuleTitle('')
-      onRefresh()
-    } catch {
-      /* ignore */
-    } finally {
-      setBusy(false)
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange])
+
+  const touch = () => setDirty(true)
+
+  const registerUpload = (id: string) => pending.current.add(id)
+  const discardMedia = (id: string) => {
+    if (pending.current.has(id)) {
+      pending.current.delete(id)
+      apiDelete(`/media/${id}`).catch(() => {}) // an unsaved upload → safe to delete right away
+    } else {
+      orphanOnSave.current.add(id) // a saved file → delete only once a save actually orphans it
     }
   }
 
+  // Delete staged-but-unsaved uploads when leaving without saving (SPA nav or full page unload).
+  useEffect(() => {
+    const flush = (viaBeacon: boolean) => {
+      if (committedRef.current || pending.current.size === 0) return
+      const ids = Array.from(pending.current)
+      pending.current.clear()
+      if (viaBeacon) {
+        const token = localStorage.getItem('accessToken')
+        ids.forEach((id) =>
+          fetch(`${API_ORIGIN}/api/media/${id}`, {
+            method: 'DELETE',
+            keepalive: true,
+            headers: token ? { authorization: `Bearer ${token}` } : {},
+          }).catch(() => {}),
+        )
+      } else {
+        ids.forEach((id) => apiDelete(`/media/${id}`).catch(() => {}))
+      }
+    }
+    const onHide = () => flush(true)
+    window.addEventListener('pagehide', onHide)
+    return () => {
+      window.removeEventListener('pagehide', onHide)
+      flush(false)
+    }
+  }, [])
+
+  function updateModule(moduleId: string, patch: Partial<DraftModule>) {
+    setModules((prev) => prev.map((m) => (m.id === moduleId ? { ...m, ...patch } : m)))
+    touch()
+  }
+
+  function removeModule(m: DraftModule) {
+    if (!window.confirm('Remove this section and its lectures?')) return
+    if (!m.isNew) removed.current.modules.push(m.id)
+    for (const l of m.lessons) {
+      if (l.video) discardMedia(l.video.id)
+      l.resources.forEach((r) => discardMedia(r.media.id))
+    }
+    if (previewId && m.lessons.some((l) => l.id === previewId)) setPreviewId(null)
+    setModules((prev) => prev.filter((x) => x.id !== m.id))
+    touch()
+  }
+
+  function removeLesson(moduleId: string, lesson: DraftLesson) {
+    if (!lesson.isNew) removed.current.lessons.push(lesson.id)
+    if (lesson.video) discardMedia(lesson.video.id)
+    lesson.resources.forEach((r) => discardMedia(r.media.id))
+    if (previewId === lesson.id) setPreviewId(null)
+    setModules((prev) =>
+      prev.map((m) => (m.id === moduleId ? { ...m, lessons: m.lessons.filter((l) => l.id !== lesson.id) } : m)),
+    )
+    touch()
+  }
+
+  function addModule() {
+    if (!moduleTitle.trim()) return setAddError('Enter a section name.')
+    setModules((prev) => [
+      ...prev,
+      {
+        id: `tmpmod_${prev.length}_${Math.round(performance.now())}`,
+        isNew: true,
+        serverTitle: '',
+        title: moduleTitle.trim(),
+        lessons: [],
+      },
+    ])
+    setModuleTitle('')
+    setAddError(null)
+    touch()
+  }
+
+  function setPreview(id: string | null) {
+    setPreviewId(id)
+    touch()
+  }
+
+  const lessonMissingAsset = (l: DraftLesson) => (l.type === 'video' ? !l.video : l.resources.length === 0)
+
+  const validate = () => {
+    const hasMissing = modules.flatMap((m) => m.lessons).some(lessonMissingAsset)
+    setShowValidation(hasMissing)
+    return !hasMissing
+  }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      hasChanges: () => dirty,
+      validate,
+      commit: async () => {
+        // 1) Deletions first.
+        for (const id of removed.current.modules) await apiDelete(`/modules/${id}`)
+        for (const id of removed.current.lessons) await apiDelete(`/lessons/${id}`)
+
+        // 2) Modules → lessons → media → resources. Track tmp → real ids for the preview.
+        let previewRealId: string | null = null
+        for (const m of modules) {
+          let moduleId = m.id
+          if (m.isNew) {
+            const { module } = await apiPost<{ module: { id: string } }>(`/courses/${course.id}/modules`, {
+              title: m.title.trim() || 'Untitled section',
+            })
+            moduleId = module.id
+          } else if (m.title.trim() && m.title !== m.serverTitle) {
+            await apiPatch(`/modules/${moduleId}`, { title: m.title.trim() })
+          }
+
+          for (const l of m.lessons) {
+            let lessonId = l.id
+            if (l.isNew) {
+              const { lesson } = await apiPost<{ lesson: { id: string } }>(`/modules/${moduleId}/lessons`, {
+                title: l.title.trim() || 'Untitled lecture',
+                type: l.type,
+              })
+              lessonId = lesson.id
+            } else if (l.title.trim() && l.title !== l.serverTitle) {
+              await apiPatch(`/lessons/${lessonId}`, { title: l.title.trim() })
+            }
+            if (l.videoDirty && l.video) {
+              await apiPatch(`/lessons/${lessonId}`, { videoId: l.video.id, videoDurationSeconds: l.videoDurationSeconds ?? null })
+            }
+            for (const rid of l.removedResourceIds) await apiDelete(`/resources/${rid}`)
+            for (const r of l.resources) {
+              if (r.isNew) await apiPost(`/lessons/${lessonId}/resources`, { mediaId: r.media.id, title: r.title })
+            }
+            if (l.id === previewId) previewRealId = lessonId
+          }
+        }
+
+        // 3) Preview — set the chosen one (server clears the rest), or clear if none.
+        if (previewRealId) {
+          await apiPatch(`/lessons/${previewRealId}`, { isPreview: true })
+        } else if (serverPreviewId.current && !removed.current.lessons.includes(serverPreviewId.current)) {
+          await apiPatch(`/lessons/${serverPreviewId.current}`, { isPreview: false })
+        }
+
+        // Delete files this save has now orphaned — a replaced video, a removed PDF.
+        // The server refuses if a file is somehow still referenced, so this can never over-delete.
+        for (const id of orphanOnSave.current) {
+          await apiDelete(`/media/${id}`).catch(() => {})
+        }
+        orphanOnSave.current.clear()
+
+        // Everything staged is now attached — no orphans to clean up.
+        committedRef.current = true
+        pending.current.clear()
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [modules, previewId, dirty, course.id],
+  )
+
   return (
     <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
-      <h2 className="font-semibold">Curriculum</h2>
-      {course.modules.length > 0 && (
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-semibold">Curriculum</h2>
+        {dirty && (
+          <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+            Unsaved — click Save changes / Publish
+          </span>
+        )}
+      </div>
+      {modules.length > 0 && (
         <div className="space-y-3">
-          {course.modules.map((m) => (
-            <ModuleBlock key={m.id} module={m} onRefresh={onRefresh} />
+          {modules.map((m) => (
+            <ModuleBlock
+              key={m.id}
+              module={m}
+              previewId={previewId}
+              showValidation={showValidation}
+              onChange={(patch) => updateModule(m.id, patch)}
+              onRemove={() => removeModule(m)}
+              onRemoveLesson={(lesson) => removeLesson(m.id, lesson)}
+              onSetPreview={setPreview}
+              registerUpload={registerUpload}
+              discardMedia={discardMedia}
+            />
           ))}
         </div>
       )}
@@ -438,25 +661,24 @@ export function CurriculumEditor({ course, onRefresh }: { course: CourseDetail; 
             value={moduleTitle}
             onChange={(e) => {
               setModuleTitle(e.target.value)
-              if (error) setError(null)
+              if (addError) setAddError(null)
             }}
             onKeyDown={(e) => e.key === 'Enter' && addModule()}
             placeholder="New section title"
             className={`flex-1 rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-accent ${
-              error ? 'border-red-500/60' : 'border-border'
+              addError ? 'border-red-500/60' : 'border-border'
             }`}
           />
           <button
             type="button"
             onClick={addModule}
-            disabled={busy}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           >
             <Plus size={15} /> Add section
           </button>
         </div>
-        {error && <p className="mt-1.5 text-sm text-red-500">{error}</p>}
+        {addError && <p className="mt-1.5 text-sm text-red-500">{addError}</p>}
       </div>
     </div>
   )
-}
+})

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Menu } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/components/auth-provider'
@@ -13,6 +13,7 @@ import { ThemeToggle } from '@/components/theme-toggle'
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   useEffect(() => {
@@ -21,6 +22,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (loading || !user) {
     return <div className="grid min-h-screen place-items-center text-sm text-muted">Loading…</div>
+  }
+
+  // The course player is immersive — no top nav, no side nav, just the player + curriculum.
+  if (pathname.endsWith('/learn')) {
+    return <>{children}</>
   }
 
   return (

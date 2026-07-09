@@ -70,14 +70,57 @@ coursesRouter.get('/', requireAuth, async (req, res) => {
   res.json({ courses })
 })
 
-// GET /api/courses/:slug — full detail for the course overview page.
+// GET /api/courses/:slug — full detail + the current user's enrollment/progress (if any).
 coursesRouter.get('/:slug', requireAuth, async (req, res) => {
   const course = await prisma.course.findUnique({
     where: { slug: String(req.params.slug) },
     select: courseDetailSelect,
   })
   if (!course) throw new HttpError(404, 'Course not found')
-  res.json({ course, stats: courseStats(course) })
+
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { userId_courseId: { userId: req.user!.id, courseId: course.id } },
+    select: {
+      id: true,
+      progressPercent: true,
+      status: true,
+      lessonProgress: { where: { status: 'completed' }, select: { lessonId: true } },
+    },
+  })
+
+  const totalLessons = course.modules.reduce((sum, m) => sum + m.lessons.length, 0)
+  const completedIds = enrollment?.lessonProgress.map((p) => p.lessonId) ?? []
+
+  res.json({
+    course,
+    stats: courseStats(course),
+    enrollment: enrollment
+      ? {
+          id: enrollment.id,
+          // Derived from the actual completed lessons so it always matches the checkboxes.
+          progressPercent: totalLessons > 0 ? Math.round((completedIds.length / totalLessons) * 100) : 0,
+          status: enrollment.status,
+          completedLessonIds: completedIds,
+        }
+      : null,
+  })
+})
+
+// POST /api/courses/:id/enroll — the current user enrolls themselves (idempotent).
+coursesRouter.post('/:id/enroll', requireAuth, async (req, res) => {
+  const courseId = String(req.params.id)
+  const course = await prisma.course.findUnique({ where: { id: courseId }, select: { id: true, status: true } })
+  if (!course) throw new HttpError(404, 'Course not found')
+  if (course.status !== 'published' && req.user!.role !== 'admin') {
+    throw new HttpError(400, 'This course is not published yet')
+  }
+  const enrollment = await prisma.enrollment.upsert({
+    where: { userId_courseId: { userId: req.user!.id, courseId } },
+    update: {},
+    create: { userId: req.user!.id, courseId },
+    select: { id: true, progressPercent: true, status: true },
+  })
+  res.status(201).json({ enrollment })
 })
 
 // PATCH /api/courses/:id — update (admin or creator).

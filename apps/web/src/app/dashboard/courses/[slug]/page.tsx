@@ -1,31 +1,43 @@
 'use client'
 
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { Award, Check, ChevronLeft, FileText, Pencil, PlayCircle, Video } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { Avatar } from '@/components/avatar'
 import { CourseContent } from '@/components/courses/course-content'
-import { apiGet } from '@/lib/api'
+import { MediaViewerModal } from '@/components/courses/media-viewer-modal'
+import { apiGet, apiPost } from '@/lib/api'
 import {
   type CourseDetail,
+  type CourseEnrollment,
   type CourseStats,
   courseThumbUrl,
   formatTotalTime,
   levelLabels,
+  mediaUrl,
 } from '@/lib/courses'
 
 export default function CourseOverviewPage() {
   const params = useParams<{ slug: string }>()
+  const router = useRouter()
   const { user } = useAuth()
-  const [data, setData] = useState<{ course: CourseDetail; stats: CourseStats } | null>(null)
+  const [data, setData] = useState<{
+    course: CourseDetail
+    stats: CourseStats
+    enrollment: CourseEnrollment | null
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [enrollMsg, setEnrollMsg] = useState<string | null>(null)
+  const [enrolling, setEnrolling] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
 
   useEffect(() => {
-    apiGet<{ course: CourseDetail; stats: CourseStats }>(`/courses/${params.slug}`)
+    apiGet<{ course: CourseDetail; stats: CourseStats; enrollment: CourseEnrollment | null }>(
+      `/courses/${params.slug}`,
+    )
       .then(setData)
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false))
@@ -44,10 +56,25 @@ export default function CourseOverviewPage() {
     )
   }
 
-  const { course, stats } = data
+  const { course, stats, enrollment } = data
   const canEdit = user?.role === 'admin' || course.createdBy.id === user?.id
   const thumb = courseThumbUrl(course.thumbnail)
   const instructor = { fullName: course.createdBy.fullName, email: '', avatar: course.createdBy.avatar }
+  // The lecture marked as the free preview (only videos can be a preview).
+  const previewLesson = course.modules.flatMap((m) => m.lessons).find((l) => l.isPreview && l.video)
+  const previewUrl = mediaUrl(previewLesson?.video ?? null)
+
+  async function enroll() {
+    setEnrolling(true)
+    setEnrollMsg(null)
+    try {
+      await apiPost(`/courses/${course.id}/enroll`)
+      router.push(`/dashboard/my-learning/${course.slug}/learn`)
+    } catch (err) {
+      setEnrollMsg(err instanceof Error ? err.message : 'Could not enroll')
+      setEnrolling(false)
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -160,19 +187,52 @@ export default function CourseOverviewPage() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={thumb} alt="" className="h-full w-full object-cover" />
               )}
-              <div className="absolute inset-0 grid place-items-center bg-black/20">
-                <PlayCircle size={56} className="text-white/90" />
-              </div>
+              {previewUrl && (
+                <button
+                  type="button"
+                  onClick={() => setShowPreview(true)}
+                  className="group absolute inset-0 grid place-items-center bg-black/20 transition hover:bg-black/30"
+                  aria-label="Play course preview"
+                >
+                  <PlayCircle size={56} className="text-white/90 drop-shadow-lg transition group-hover:scale-110" />
+                </button>
+              )}
             </div>
             <div className="p-5">
-              <button
-                type="button"
-                onClick={() => setEnrollMsg('Enrolment is coming in the next slice.')}
-                className="w-full rounded-lg bg-accent px-4 py-3 font-semibold text-white transition duration-200 hover:opacity-90"
-              >
-                Enroll now
-              </button>
-              {enrollMsg && <p className="mt-2 text-center text-xs text-muted">{enrollMsg}</p>}
+              {enrollment ? (
+                <>
+                  <Link
+                    href={`/dashboard/my-learning/${course.slug}/learn`}
+                    className="block w-full rounded-lg bg-accent px-4 py-3 text-center font-semibold text-white transition duration-200 hover:opacity-90"
+                  >
+                    {enrollment.progressPercent > 0 ? 'Continue learning' : 'Start course'}
+                  </Link>
+                  <div className="mt-3">
+                    <div className="mb-1 flex items-center justify-between text-xs text-muted">
+                      <span>{enrollment.progressPercent}% complete</span>
+                      {enrollment.status === 'completed' && (
+                        <span className="font-medium text-emerald-500">Completed ✓</span>
+                      )}
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-border">
+                      <div
+                        className="h-full rounded-full bg-accent transition-all duration-300"
+                        style={{ width: `${enrollment.progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={enroll}
+                  disabled={enrolling}
+                  className="w-full rounded-lg bg-accent px-4 py-3 font-semibold text-white transition duration-200 hover:opacity-90 disabled:opacity-60"
+                >
+                  {enrolling ? 'Enrolling…' : 'Enroll now'}
+                </button>
+              )}
+              {enrollMsg && <p className="mt-2 text-center text-xs text-red-500">{enrollMsg}</p>}
 
               <p className="mt-5 font-semibold">This course includes:</p>
               <ul className="mt-3 space-y-2.5 text-sm text-muted">
@@ -192,6 +252,15 @@ export default function CourseOverviewPage() {
           </div>
         </aside>
       </div>
+
+      {showPreview && previewUrl && (
+        <MediaViewerModal
+          url={previewUrl}
+          kind="video"
+          title={previewLesson?.title ?? course.title}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
     </div>
   )
 }

@@ -3,24 +3,27 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BookOpen, LayoutDashboard, Users, X } from 'lucide-react'
+import { BookOpen, GraduationCap, LayoutDashboard, Users, X } from 'lucide-react'
 import { useEffect } from 'react'
 import { useAuth } from '@/components/auth-provider'
 
 const NAV = {
   admin: [
     { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+    { href: '/dashboard/my-learning', label: 'My Learning', icon: GraduationCap },
     { href: '/dashboard/users', label: 'All Users', icon: Users },
     { href: '/dashboard/courses', label: 'All Courses', icon: BookOpen },
   ],
   manager: [
     { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+    { href: '/dashboard/my-learning', label: 'My Learning', icon: GraduationCap },
     { href: '/dashboard/users', label: 'My Team', icon: Users },
     { href: '/dashboard/courses', label: 'All Courses', icon: BookOpen },
   ],
   employee: [
     { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-    { href: '/dashboard/courses', label: 'My Courses', icon: BookOpen },
+    { href: '/dashboard/my-learning', label: 'My Learning', icon: GraduationCap },
+    { href: '/dashboard/courses', label: 'All Courses', icon: BookOpen },
   ],
 } as const
 

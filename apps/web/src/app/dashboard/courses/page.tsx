@@ -20,7 +20,7 @@ export default function CoursesPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const title = user?.role === 'employee' ? 'My courses' : 'All courses'
+  const title = 'All courses'
   const canCreate = user?.role === 'admin' || Boolean(user?.canCreateCourses)
 
   return (
