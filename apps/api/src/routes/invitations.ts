@@ -28,8 +28,8 @@ invitationsRouter.post(
 
     if (managerId) {
       const manager = await prisma.user.findUnique({ where: { id: managerId } })
-      if (!manager || manager.role !== 'manager') {
-        throw new HttpError(400, 'managerId must reference a manager')
+      if (!manager || (manager.role !== 'manager' && manager.role !== 'admin')) {
+        throw new HttpError(400, 'managerId must reference a manager or an admin')
       }
     }
 

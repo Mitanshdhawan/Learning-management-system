@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
+import { AnimatePresence, motion } from 'framer-motion'
 import { CheckCircle2, ChevronDown, ChevronLeft, Circle, FileText, PlayCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiGet, apiPost } from '@/lib/api'
@@ -39,8 +40,11 @@ export default function LearnPage() {
         setCompleted(new Set(d.enrollment.completedLessonIds))
         const lessons = d.course.modules.flatMap((m) => m.lessons)
         const firstIncomplete = lessons.find((l) => !d.enrollment!.completedLessonIds.includes(l.id))
-        setCurrentId((firstIncomplete ?? lessons[0])?.id ?? null)
-        setOpenSections(new Set(d.course.modules.map((m) => m.id)))
+        const startLesson = firstIncomplete ?? lessons[0]
+        setCurrentId(startLesson?.id ?? null)
+        // Open only the section that holds the starting lesson.
+        const startModule = d.course.modules.find((m) => m.lessons.some((l) => l.id === startLesson?.id))
+        setOpenSections(new Set(startModule ? [startModule.id] : []))
       })
       .catch(() => setDenied(true))
       .finally(() => setLoading(false))
@@ -89,6 +93,13 @@ export default function LearnPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentId])
 
+  // Keep only the section of the currently-playing lecture expanded.
+  useEffect(() => {
+    if (!course || !currentId) return
+    const mod = course.modules.find((m) => m.lessons.some((l) => l.id === currentId))
+    if (mod) setOpenSections(new Set([mod.id]))
+  }, [currentId, course])
+
   if (loading) return <p className="text-sm text-muted">Loading…</p>
 
   if (denied || !course) {
@@ -130,6 +141,7 @@ export default function LearnPage() {
                 src={videoUrl}
                 controls
                 autoPlay
+                controlsList="nodownload"
                 onLoadedMetadata={() => {
                   watchedRef.current = 0
                   lastTimeRef.current = 0
@@ -206,45 +218,54 @@ export default function LearnPage() {
                       </span>
                       <ChevronDown size={16} className={`shrink-0 text-muted transition ${open ? 'rotate-180' : ''}`} />
                     </button>
-                    {open && (
-                      <div>
-                        {m.lessons.map((l) => {
-                          const isCurrent = l.id === currentId
-                          const isDone = completed.has(l.id)
-                          return (
-                            <div
-                              key={l.id}
-                              className={`flex items-start gap-2.5 px-4 py-2.5 transition ${
-                                isCurrent ? 'bg-accent/10' : 'hover:bg-background'
-                              }`}
-                            >
-                              {isDone ? (
-                                <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-accent" />
-                              ) : (
-                                <Circle size={16} className="mt-0.5 shrink-0 text-muted/50" />
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => setCurrentId(l.id)}
-                                className="min-w-0 flex-1 text-left"
+                    <AnimatePresence initial={false}>
+                      {open && (
+                        <motion.div
+                          key="lessons"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25, ease: 'easeInOut' }}
+                          className="overflow-hidden"
+                        >
+                          {m.lessons.map((l) => {
+                            const isCurrent = l.id === currentId
+                            const isDone = completed.has(l.id)
+                            return (
+                              <div
+                                key={l.id}
+                                className={`flex items-start gap-2.5 px-4 py-2.5 transition ${
+                                  isCurrent ? 'bg-accent/10' : 'hover:bg-background'
+                                }`}
                               >
-                                <span className={`block text-sm ${isCurrent ? 'font-medium text-accent' : ''}`}>
-                                  {l.title}
-                                </span>
-                                <span className="mt-0.5 flex items-center gap-1 text-xs text-muted">
-                                  {l.type === 'video' ? <PlayCircle size={12} /> : <FileText size={12} />}
-                                  {l.type === 'video' && l.videoDurationSeconds != null
-                                    ? formatLectureTime(l.videoDurationSeconds)
-                                    : l.type === 'video'
-                                      ? 'Video'
-                                      : 'Reading'}
-                                </span>
-                              </button>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
+                                {isDone ? (
+                                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-accent" />
+                                ) : (
+                                  <Circle size={16} className="mt-0.5 shrink-0 text-muted/50" />
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setCurrentId(l.id)}
+                                  className="min-w-0 flex-1 text-left"
+                                >
+                                  <span className={`block text-sm ${isCurrent ? 'font-medium text-accent' : ''}`}>
+                                    {l.title}
+                                  </span>
+                                  <span className="mt-0.5 flex items-center gap-1 text-xs text-muted">
+                                    {l.type === 'video' ? <PlayCircle size={12} /> : <FileText size={12} />}
+                                    {l.type === 'video' && l.videoDurationSeconds != null
+                                      ? formatLectureTime(l.videoDurationSeconds)
+                                      : l.type === 'video'
+                                        ? 'Video'
+                                        : 'Reading'}
+                                  </span>
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )
               })}

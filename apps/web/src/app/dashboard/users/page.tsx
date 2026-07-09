@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth, type AuthUser } from '@/components/auth-provider'
 import { UserCard } from '@/components/dashboard/user-card'
 import { Select } from '@/components/ui/select'
-import { apiDelete, apiGet, apiPatch, apiPost } from '@/lib/api'
+import { apiGet, apiPost } from '@/lib/api'
 
 type Filter = 'all' | 'employee' | 'manager' | 'admin'
 
@@ -115,22 +115,11 @@ export default function UsersPage() {
   }, [load])
 
   const isAdmin = user?.role === 'admin'
-  const managers = useMemo(() => users.filter((u) => u.role === 'manager'), [users])
-
-  async function reassign(userId: string, managerId: string | null) {
-    const previous = users
-    setUsers((cur) => cur.map((u) => (u.id === userId ? { ...u, managerId } : u)))
-    try {
-      await apiPatch(`/users/${userId}`, { managerId })
-    } catch {
-      setUsers(previous)
-    }
-  }
-
-  async function deleteUser(u: AuthUser) {
-    await apiDelete(`/users/${u.id}`)
-    setUsers((cur) => cur.filter((x) => x.id !== u.id))
-  }
+  // Admins can also have direct reports, so they're assignable as a manager too.
+  const managers = useMemo(
+    () => users.filter((u) => u.role === 'manager' || u.role === 'admin'),
+    [users],
+  )
 
   const filters: { key: Filter; label: string }[] = isAdmin
     ? [
@@ -208,15 +197,7 @@ export default function UsersPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((u) => (
-            <UserCard
-              key={u.id}
-              user={u}
-              managers={managers}
-              canManage={!!isAdmin}
-              currentUserId={user?.id}
-              onReassign={reassign}
-              onDelete={isAdmin ? deleteUser : undefined}
-            />
+            <UserCard key={u.id} user={u} />
           ))}
         </div>
       )}

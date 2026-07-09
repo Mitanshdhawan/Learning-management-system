@@ -65,19 +65,27 @@ usersRouter.post('/me/avatar', requireAuth, uploadImage.single('avatar'), async 
 // PATCH /api/users/:id — admin updates a user's manager and/or role.
 usersRouter.patch('/:id', requireAuth, requireRole('admin'), validateBody(updateUserSchema), async (req, res) => {
   const id = String(req.params.id)
-  const { managerId, role } = req.body
+  const { managerId, role, fullName, canCreateCourses } = req.body
 
   const target = await prisma.user.findUnique({ where: { id } })
   if (!target) throw new HttpError(404, 'User not found')
 
-  const data: { managerId?: string | null; role?: 'admin' | 'manager' | 'employee' } = {}
+  const data: {
+    managerId?: string | null
+    role?: 'admin' | 'manager' | 'employee'
+    fullName?: string
+    canCreateCourses?: boolean
+  } = {}
+
+  if (fullName !== undefined) data.fullName = fullName
+  if (canCreateCourses !== undefined) data.canCreateCourses = canCreateCourses
 
   if (managerId !== undefined) {
     if (managerId) {
       if (managerId === id) throw new HttpError(400, 'A user cannot report to themselves')
       const manager = await prisma.user.findUnique({ where: { id: managerId } })
-      if (!manager || manager.role !== 'manager') {
-        throw new HttpError(400, 'managerId must reference a manager')
+      if (!manager || (manager.role !== 'manager' && manager.role !== 'admin')) {
+        throw new HttpError(400, 'managerId must reference a manager or an admin')
       }
     }
     data.managerId = managerId

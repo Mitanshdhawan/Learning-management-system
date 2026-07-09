@@ -40,9 +40,9 @@ function EnrolledCard({ item }: { item: Enrolled }) {
           </div>
         )}
         {/* thin progress bar along the bottom of the thumbnail */}
-        <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/25">
+        {/* <div className="absolute inset-x-0 bottom-0 h-1.5 bg-black/25">
           <div className="h-full bg-accent" style={{ width: `${progressPercent}%` }} />
-        </div>
+        </div> */}
       </div>
 
       <div className="flex flex-1 flex-col p-5">

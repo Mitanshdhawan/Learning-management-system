@@ -1,11 +1,8 @@
 'use client'
 
-import { Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import Link from 'next/link'
 import { type AuthUser } from '@/components/auth-provider'
 import { Avatar } from '@/components/avatar'
-import { ConfirmDeleteModal } from '@/components/ui/confirm-delete-modal'
-import { Select } from '@/components/ui/select'
 
 const roleBadge: Record<string, string> = {
   admin: 'border-accent/40 bg-accent/10 text-accent',
@@ -13,32 +10,12 @@ const roleBadge: Record<string, string> = {
   employee: 'border-border bg-background text-muted',
 }
 
-interface Props {
-  user: AuthUser
-  managers: AuthUser[]
-  canManage: boolean
-  currentUserId?: string
-  onReassign: (userId: string, managerId: string | null) => void
-  onDelete?: (user: AuthUser) => Promise<void>
-}
-
-export function UserCard({ user, managers, canManage, currentUserId, onReassign, onDelete }: Props) {
-  const [showDelete, setShowDelete] = useState(false)
-  const canDelete = canManage && !!onDelete && user.id !== currentUserId
-
+export function UserCard({ user }: { user: AuthUser }) {
   return (
-    <div className="group relative rounded-2xl border border-border bg-card p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-accent/50 hover:shadow-xl hover:shadow-accent/5">
-      {canDelete && (
-        <button
-          type="button"
-          onClick={() => setShowDelete(true)}
-          aria-label={`Delete ${user.email}`}
-          className="absolute right-3 top-3 rounded-lg p-1.5 text-muted transition duration-200 hover:bg-red-500/10 hover:text-red-500"
-        >
-          <Trash2 size={16} />
-        </button>
-      )}
-
+    <Link
+      href={`/dashboard/users/${user.id}`}
+      className="group flex flex-col rounded-2xl border border-border bg-card p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-accent/50 hover:shadow-xl hover:shadow-accent/5"
+    >
       <div className="flex items-center gap-4">
         <div className="transition duration-200 group-hover:scale-105">
           <Avatar user={user} size={56} />
@@ -58,42 +35,12 @@ export function UserCard({ user, managers, canManage, currentUserId, onReassign,
         <span className="rounded-full border border-border px-2.5 py-1 text-xs capitalize text-muted">
           {user.status}
         </span>
+        {user.manager && (
+          <span className="rounded-full border border-border px-2.5 py-1 text-xs text-muted">
+            ↳ {user.manager.fullName ?? user.manager.email}
+          </span>
+        )}
       </div>
-
-      {canManage && user.role === 'employee' && (
-        <div className="mt-4 border-t border-border pt-3">
-          <label className="mb-1 block text-xs text-muted">Reports to</label>
-          <Select
-            ariaLabel={`Manager for ${user.email}`}
-            value={user.managerId ?? ''}
-            onChange={(v) => onReassign(user.id, v || null)}
-            options={[
-              { value: '', label: 'No manager' },
-              ...managers
-                .filter((m) => m.id !== user.id)
-                .map((m) => ({ value: m.id, label: m.fullName ?? m.email })),
-            ]}
-          />
-        </div>
-      )}
-
-      {showDelete && onDelete && (
-        <ConfirmDeleteModal
-          title="Delete this user?"
-          confirmText={user.email}
-          confirmHint="User's email"
-          description={
-            <>
-              This permanently deletes{' '}
-              <span className="font-medium text-foreground">{user.fullName ?? user.email}</span> and revokes their
-              access. This cannot be undone.
-            </>
-          }
-          confirmLabel="Delete user"
-          onCancel={() => setShowDelete(false)}
-          onConfirm={() => onDelete(user)}
-        />
-      )}
-    </div>
+    </Link>
   )
 }

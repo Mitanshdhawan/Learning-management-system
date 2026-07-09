@@ -107,7 +107,9 @@ export type UpdateMeInput = z.infer<typeof updateMeSchema>
 
 // Admin editing another user. managerId: uuid = assign, null = unassign, omit = no change.
 export const updateUserSchema = z.object({
+  fullName: z.string().min(1).max(120).optional(),
   managerId: z.string().uuid().nullable().optional(),
   role: roleSchema.optional(),
+  canCreateCourses: z.boolean().optional(),
 })
 export type UpdateUserInput = z.infer<typeof updateUserSchema>

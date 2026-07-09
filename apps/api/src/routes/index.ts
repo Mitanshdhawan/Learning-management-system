@@ -10,6 +10,7 @@ import { lessonsRouter } from './lessons'
 import { mediaRouter } from './media'
 import { modulesRouter } from './modules'
 import { resourcesRouter } from './resources'
+import { teamRouter } from './team'
 import { usersRouter } from './users'
 
 export const apiRouter = Router()
@@ -18,6 +19,7 @@ apiRouter.use('/health', healthRouter)
 apiRouter.use('/auth', authRouter)
 apiRouter.use('/invitations', invitationsRouter)
 apiRouter.use('/users', usersRouter)
+apiRouter.use('/team', teamRouter)
 apiRouter.use('/admin', adminRouter)
 apiRouter.use('/categories', categoriesRouter)
 apiRouter.use('/courses', coursesRouter)
