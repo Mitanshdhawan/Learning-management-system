@@ -9,6 +9,7 @@ build/
 out/
 .turbo/
 uploads/
+*.tsbuildinfo
 
 # env files (keep *.example)
 .env
