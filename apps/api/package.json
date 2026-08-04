@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "@toplms/db": "workspace:*",
     "@toplms/validation": "workspace:*",
     "bcryptjs": "^2.4.3",
