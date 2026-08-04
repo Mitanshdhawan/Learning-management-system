@@ -12,6 +12,7 @@ export interface AuthUser {
   theme: 'light' | 'dark'
   managerId: string | null
   canCreateCourses: boolean
+  canManageAllCourses: boolean
   avatarId: string | null
   createdAt: string
   avatar: { storageKey: string; provider: string } | null

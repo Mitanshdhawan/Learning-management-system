@@ -28,11 +28,10 @@ export default function Home() {
             Internal learning platform
           </p>
           <h1 className="mx-auto max-w-3xl text-balance text-4xl font-bold tracking-tight sm:text-6xl">
-            Learn, grow, and get certified — all in one place.
+            Learn, grow, and get certified - all in one place.
           </h1>
           <p className="mx-auto mt-6 max-w-xl text-lg text-muted">
             Courses, modules, quizzes and certificates for your whole team.
-            Try the theme switch in the top-right corner. ☀️ / 🌙
           </p>
           <div className="mt-10 flex items-center justify-center gap-4">
             <Link

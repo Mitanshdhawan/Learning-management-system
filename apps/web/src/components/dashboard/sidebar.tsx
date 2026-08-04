@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BookOpen, GraduationCap, LayoutDashboard, UserCog, Users, X } from 'lucide-react'
+import { BookOpen, GraduationCap, LayoutDashboard, LogOut, UserCog, Users, X } from 'lucide-react'
 import { useEffect } from 'react'
 import { useAuth } from '@/components/auth-provider'
 
@@ -63,8 +63,23 @@ function NavLinks({
   )
 }
 
+function SignOutFooter({ onSignOut }: { onSignOut: () => void }) {
+  return (
+    <div className="mt-auto border-t border-border pt-3">
+      <button
+        type="button"
+        onClick={onSignOut}
+        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted transition duration-200 hover:bg-card hover:text-red-500"
+      >
+        <LogOut size={18} />
+        Sign out
+      </button>
+    </div>
+  )
+}
+
 export function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: boolean; onClose?: () => void }) {
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
   const pathname = usePathname()
 
   useEffect(() => {
@@ -81,8 +96,9 @@ export function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: boolean;
   return (
     <>
       {/* Desktop: static sidebar */}
-      <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-60 shrink-0 border-r border-border p-4 md:block">
+      <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-60 shrink-0 flex-col overflow-y-auto border-r border-border p-4 md:flex">
         <NavLinks items={items} pathname={pathname} />
+        <SignOutFooter onSignOut={signOut} />
       </aside>
 
       {/* Mobile: slide-in drawer */}
@@ -102,7 +118,7 @@ export function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: boolean;
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'tween', duration: 0.25, ease: 'easeOut' }}
-              className="absolute left-0 top-0 flex h-full w-64 flex-col border-r border-border bg-background p-4 shadow-2xl shadow-black/30"
+              className="absolute left-0 top-0 flex h-full w-64 flex-col overflow-y-auto border-r border-border bg-background p-4 shadow-2xl shadow-black/30"
             >
               <div className="mb-4 flex items-center justify-between">
                 <span className="text-sm font-semibold text-muted">Menu</span>
@@ -116,6 +132,12 @@ export function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: boolean;
                 </button>
               </div>
               <NavLinks items={items} pathname={pathname} onNavigate={onClose} />
+              <SignOutFooter
+                onSignOut={() => {
+                  onClose?.()
+                  signOut()
+                }}
+              />
             </motion.aside>
           </motion.div>
         )}

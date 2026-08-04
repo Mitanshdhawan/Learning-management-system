@@ -32,8 +32,14 @@ export function UserCard({ user }: { user: AuthUser }) {
         >
           {user.role}
         </span>
-        <span className="rounded-full border border-border px-2.5 py-1 text-xs capitalize text-muted">
-          {user.status}
+        <span
+          className={`rounded-full border px-2.5 py-1 text-xs capitalize ${
+            user.status === 'deactivated'
+              ? 'border-red-500/40 bg-red-500/10 font-medium text-red-500'
+              : 'border-border text-muted'
+          }`}
+        >
+          {user.status === 'deactivated' ? 'Blocked' : user.status}
         </span>
         {user.manager && (
           <span className="rounded-full border border-border px-2.5 py-1 text-xs text-muted">

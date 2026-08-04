@@ -1,11 +1,18 @@
 'use client'
 
-import { Eye, FileText, PlayCircle, Plus, Trash2, Upload, X } from 'lucide-react'
+import { Eye, FileText, ListChecks, PlayCircle, Plus, Trash2, Upload, X } from 'lucide-react'
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { MediaViewerModal } from '@/components/courses/media-viewer-modal'
 import { Select } from '@/components/ui/select'
 import { API_ORIGIN, apiDelete, apiPatch, apiPost, uploadMedia } from '@/lib/api'
-import { type CourseDetail, type CourseMedia, formatLectureTime, mediaUrl } from '@/lib/courses'
+import {
+  type CourseDetail,
+  type CourseMedia,
+  type CourseModuleTest,
+  formatLectureTime,
+  mediaUrl,
+} from '@/lib/courses'
+import { TestEditorModal } from '@/components/courses/test-editor-modal'
 
 // ----- Draft model: everything is edited locally and only persisted on commit() -----
 
@@ -33,6 +40,7 @@ interface DraftModule {
   serverTitle: string
   title: string
   lessons: DraftLesson[]
+  test: CourseModuleTest | null
 }
 
 export interface CurriculumHandle {
@@ -49,6 +57,7 @@ function initModules(course: CourseDetail): DraftModule[] {
     isNew: false,
     serverTitle: m.title,
     title: m.title,
+    test: m.test ?? null,
     lessons: m.lessons.map((l) => ({
       id: l.id,
       isNew: false,
@@ -143,7 +152,7 @@ function LessonRow({
     const file = e.target.files?.[0]
     if (fileRef.current) fileRef.current.value = ''
     if (!file) return
-    if (file.type !== 'application/pdf') return setError('Only PDFs can be read in the browser — please upload a PDF.')
+    if (file.type !== 'application/pdf') return setError('Only PDFs can be read in the browser - please upload a PDF.')
     setError(null)
     setBusy(true)
     try {
@@ -225,7 +234,7 @@ function LessonRow({
                   <PlayCircle size={13} className="text-accent" />
                   <span className="max-w-[180px] truncate text-foreground">{lesson.video.fileName ?? 'Video'}</span>
                   <span className="rounded bg-accent/15 px-1.5 py-0.5 font-medium text-accent">
-                    {lesson.videoDurationSeconds != null ? formatLectureTime(lesson.videoDurationSeconds) : '—'}
+                    {lesson.videoDurationSeconds != null ? formatLectureTime(lesson.videoDurationSeconds) : '-'}
                   </span>
                 </span>
                 {videoUrl && (
@@ -370,6 +379,7 @@ function ModuleBlock({
   onSetPreview,
   registerUpload,
   discardMedia,
+  onEditTest,
 }: {
   module: DraftModule
   previewId: string | null
@@ -380,6 +390,7 @@ function ModuleBlock({
   onSetPreview: (id: string | null) => void
   registerUpload: (id: string) => void
   discardMedia: (id: string) => void
+  onEditTest: () => void
 }) {
   function updateLesson(lessonId: string, patch: Partial<DraftLesson>) {
     onChange({ lessons: module.lessons.map((l) => (l.id === lessonId ? { ...l, ...patch } : l)) })
@@ -437,6 +448,37 @@ function ModuleBlock({
             })
           }
         />
+
+        {/* Section test */}
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-card/40 px-4 py-2.5">
+          <span className="flex items-center gap-2 text-sm text-muted">
+            <ListChecks size={15} className="text-accent" />
+            {module.test ? (
+              <>
+                Test: <span className="font-medium text-foreground">{module.test.title}</span> ·{' '}
+                {module.test._count.questions} question{module.test._count.questions === 1 ? '' : 's'}
+                {module.test.isRequired && (
+                  <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                    Required
+                  </span>
+                )}
+              </>
+            ) : (
+              'No test for this section'
+            )}
+          </span>
+          {module.isNew ? (
+            <span className="text-xs text-muted">Save the course first to add a test</span>
+          ) : (
+            <button
+              type="button"
+              onClick={onEditTest}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:border-accent/60 hover:text-accent"
+            >
+              {module.test ? 'Edit test' : '+ Add test'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -459,6 +501,7 @@ export const CurriculumEditor = forwardRef<
   const [moduleTitle, setModuleTitle] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
   const [showValidation, setShowValidation] = useState(false) // reveal per-lecture "missing file" errors after a save attempt
+  const [testModule, setTestModule] = useState<DraftModule | null>(null) // section whose test is being edited
 
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange])
 
@@ -538,6 +581,7 @@ export const CurriculumEditor = forwardRef<
         isNew: true,
         serverTitle: '',
         title: moduleTitle.trim(),
+        test: null,
         lessons: [],
       },
     ])
@@ -633,7 +677,7 @@ export const CurriculumEditor = forwardRef<
         <h2 className="font-semibold">Curriculum</h2>
         {dirty && (
           <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
-            Unsaved — click Save changes / Publish
+            Unsaved - click Save changes / Publish
           </span>
         )}
       </div>
@@ -651,6 +695,7 @@ export const CurriculumEditor = forwardRef<
               onSetPreview={setPreview}
               registerUpload={registerUpload}
               discardMedia={discardMedia}
+              onEditTest={() => setTestModule(m)}
             />
           ))}
         </div>
@@ -679,6 +724,19 @@ export const CurriculumEditor = forwardRef<
         </div>
         {addError && <p className="mt-1.5 text-sm text-red-500">{addError}</p>}
       </div>
+
+      {testModule && (
+        <TestEditorModal
+          moduleId={testModule.id}
+          moduleTitle={testModule.title}
+          onClose={() => setTestModule(null)}
+          onSaved={(test) => {
+            // The test is persisted immediately by its own endpoint — just sync the local summary.
+            setModules((prev) => prev.map((mm) => (mm.id === testModule.id ? { ...mm, test } : mm)))
+            setTestModule(null)
+          }}
+        />
+      )}
     </div>
   )
 })

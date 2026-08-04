@@ -10,6 +10,7 @@ export const safeUserSelect = {
   theme: true,
   managerId: true,
   canCreateCourses: true,
+  canManageAllCourses: true,
   avatarId: true,
   createdAt: true,
   avatar: { select: { storageKey: true, provider: true } },

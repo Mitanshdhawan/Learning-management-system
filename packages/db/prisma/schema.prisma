@@ -60,6 +60,7 @@ enum QuestionType {
   single_choice
   multiple_choice
   true_false
+  short_answer
 }
 
 enum ApprovalStatus {
@@ -104,6 +105,8 @@ model MediaAsset {
   lessonVideos        Lesson[]         @relation("LessonVideo")
   lessonResources  LessonResource[]
   certificates     Certificate[]
+  attemptScreenRecordings TestAttempt[] @relation("AttemptScreenRecording")
+  attemptCameraRecordings TestAttempt[] @relation("AttemptCameraRecording")
 
   @@index([kind])
   @@index([uploadedById])
@@ -121,6 +124,7 @@ model User {
   role             UserRole   @default(employee)
   managerId        String?    @map("manager_id") @db.Uuid
   canCreateCourses Boolean    @default(false) @map("can_create_courses")
+  canManageAllCourses Boolean @default(false) @map("can_manage_all_courses")
   avatarId         String?    @map("avatar_id") @db.Uuid
   status           UserStatus @default(invited)
   theme            Theme      @default(light)
@@ -139,6 +143,9 @@ model User {
   enrollments          Enrollment[]   @relation("EnrollmentUser")
   enrollmentsAssigned  Enrollment[]   @relation("EnrollmentEnrolledBy")
   enrollmentsApproved  Enrollment[]   @relation("EnrollmentApprovedBy")
+  testReviews          TestAttempt[]  @relation("TestReviewer")
+  testAllowances       TestAllowance[] @relation("TestAllowanceUser")
+  testAllowancesGranted TestAllowance[] @relation("TestAllowanceGrantedBy")
   notifications        Notification[]
   activityLogs         ActivityLog[]
 
@@ -276,11 +283,29 @@ model Test {
   timeLimitMinutes Int?    @map("time_limit_minutes")
   isRequired       Boolean @default(true) @map("is_required")
 
-  module    Module        @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  questions Question[]
-  attempts  TestAttempt[]
+  module     Module          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  questions  Question[]
+  attempts   TestAttempt[]
+  allowances TestAllowance[]
 
   @@map("tests")
+}
+
+/// Per-learner override of a test's attempt limit, set by an admin or their manager.
+model TestAllowance {
+  id          String   @id @default(uuid()) @db.Uuid
+  testId      String   @map("test_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  maxAttempts Int      @map("max_attempts")
+  grantedById String?  @map("granted_by") @db.Uuid
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  test      Test  @relation(fields: [testId], references: [id], onDelete: Cascade)
+  user      User  @relation("TestAllowanceUser", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User? @relation("TestAllowanceGrantedBy", fields: [grantedById], references: [id])
+
+  @@unique([testId, userId])
+  @@map("test_allowances")
 }
 
 model Question {
@@ -290,6 +315,7 @@ model Question {
   type         QuestionType @default(single_choice)
   points       Int          @default(1)
   position     Int
+  correctText  String?      @map("correct_text") // expected answer for short_answer questions
 
   test    Test             @relation(fields: [testId], references: [id], onDelete: Cascade)
   options QuestionOption[]
@@ -366,11 +392,20 @@ model TestAttempt {
   attemptNumber Int       @default(1) @map("attempt_number")
   score         Int?
   passed        Boolean?
+  approvalStatus ApprovalStatus @default(not_required) @map("approval_status")
+  reviewedById  String?   @map("reviewed_by") @db.Uuid
+  reviewedAt    DateTime? @map("reviewed_at")
   startedAt     DateTime  @default(now()) @map("started_at")
   submittedAt   DateTime? @map("submitted_at")
+  // Proctoring footage for this attempt (uploaded on submit).
+  screenRecordingId String? @map("screen_recording_id") @db.Uuid
+  cameraRecordingId String? @map("camera_recording_id") @db.Uuid
 
   test       Test         @relation(fields: [testId], references: [id], onDelete: Cascade)
   enrollment Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  reviewedBy User?        @relation("TestReviewer", fields: [reviewedById], references: [id])
+  screenRecording MediaAsset? @relation("AttemptScreenRecording", fields: [screenRecordingId], references: [id])
+  cameraRecording MediaAsset? @relation("AttemptCameraRecording", fields: [cameraRecordingId], references: [id])
   answers    TestAnswer[]
 
   @@index([enrollmentId, testId])
@@ -378,15 +413,19 @@ model TestAttempt {
 }
 
 model TestAnswer {
-  id                String   @id @default(uuid()) @db.Uuid
-  attemptId         String   @map("attempt_id") @db.Uuid
-  questionId        String   @map("question_id") @db.Uuid
+  id         String  @id @default(uuid()) @db.Uuid
+  attemptId  String  @map("attempt_id") @db.Uuid
+  questionId String? @map("question_id") @db.Uuid
+  // Frozen copy of the question as the learner saw it, so editing the test later
+  // never rewrites the history a reviewer looks at.
+  questionSnapshot  Json?    @map("question_snapshot")
   selectedOptionIds Json?    @map("selected_option_ids")
+  textAnswer        String?  @map("text_answer") // learner's typed answer for short_answer questions
   isCorrect         Boolean? @map("is_correct")
   pointsAwarded     Int      @default(0) @map("points_awarded")
 
   attempt  TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  question Question    @relation(fields: [questionId], references: [id])
+  question Question?   @relation(fields: [questionId], references: [id], onDelete: SetNull)
 
   @@map("test_answers")
 }

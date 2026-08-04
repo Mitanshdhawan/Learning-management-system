@@ -73,7 +73,7 @@ export default function InvitePage() {
   return (
     <div className="min-h-screen">
       <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
-        <Link href="/" aria-label="TOP — The Outsource Pro">
+        <Link href="/" aria-label="TOP - The Outsource Pro">
           <Logo className="h-8" />
         </Link>
         <ThemeToggle />

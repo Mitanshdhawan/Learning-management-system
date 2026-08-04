@@ -47,12 +47,21 @@ export interface CourseLesson {
   resources: LessonResource[]
 }
 
+export interface CourseModuleTest {
+  id: string
+  title: string
+  isRequired: boolean
+  passingScore: number
+  _count: { questions: number }
+}
+
 export interface CourseModule {
   id: string
   title: string
   description: string | null
   position: number
   lessons: CourseLesson[]
+  test?: CourseModuleTest | null
 }
 
 export interface CourseDetail extends CourseSummary {
@@ -68,6 +77,7 @@ export interface CourseEnrollment {
   progressPercent: number
   status: string
   completedLessonIds: string[]
+  passedTestIds: string[]
 }
 
 export interface CourseStats {

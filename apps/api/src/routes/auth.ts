@@ -63,10 +63,18 @@ authRouter.post('/accept', validateBody(inviteAcceptSchema), async (req, res) =>
 authRouter.post('/login', validateBody(loginSchema), async (req, res) => {
   const { email, password } = req.body
   const existing = await prisma.user.findUnique({ where: { email } })
-  if (!existing || existing.status !== 'active' || !existing.passwordHash) {
+  if (!existing || !existing.passwordHash) {
     throw new HttpError(401, 'Invalid credentials')
   }
+  // Verify the password before revealing anything about the account status, so a
+  // "blocked" message only ever reaches someone with the right credentials.
   if (!(await verifyPassword(password, existing.passwordHash))) {
+    throw new HttpError(401, 'Invalid credentials')
+  }
+  if (existing.status === 'deactivated') {
+    throw new HttpError(403, 'Your access has been blocked. Please contact your manager.')
+  }
+  if (existing.status !== 'active') {
     throw new HttpError(401, 'Invalid credentials')
   }
 
@@ -109,6 +117,10 @@ authRouter.post('/logout', (_req, res) => {
 authRouter.get('/me', requireAuth, async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.user!.id }, select: safeUserSelect })
   if (!user) throw new HttpError(404, 'User not found')
+  // A user blocked mid-session is signed out the next time the app loads /me.
+  if (user.status === 'deactivated') {
+    throw new HttpError(403, 'Your access has been blocked. Please contact your manager.')
+  }
   res.json({ user })
 })
 

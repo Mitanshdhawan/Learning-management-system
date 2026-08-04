@@ -37,7 +37,13 @@ export default function CourseBuilderPage() {
   useEffect(() => {
     load()
       .then((c) => {
-        if (user && user.role !== 'admin' && c.createdBy.id !== user.id) setDenied(true)
+        if (
+          user &&
+          user.role !== 'admin' &&
+          !user.canManageAllCourses &&
+          c.createdBy.id !== user.id
+        )
+          setDenied(true)
       })
       .catch(() => setDenied(true))
       .finally(() => setLoading(false))
@@ -80,7 +86,7 @@ export default function CourseBuilderPage() {
     // Every video/reading lecture must have its file uploaded before anything is saved.
     const valid = curriculumRef.current?.validate() ?? true
     if (!valid) {
-      setPublishError('Some lectures still need their video or PDF — upload the highlighted ones, then save.')
+      setPublishError('Some lectures still need their video or PDF - upload the highlighted ones, then save.')
       return
     }
     setSaving(true)

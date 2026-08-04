@@ -1,7 +1,7 @@
 import { prisma } from '@toplms/db'
 import { lessonProgressSchema, lessonResourceCreateSchema, lessonUpdateSchema } from '@toplms/validation'
 import { Router } from 'express'
-import { assertCanEditCourse, lessonResourceSelect } from '../lib/courses'
+import { assertCanEditCourse, lessonResourceSelect, recomputeEnrollmentProgress } from '../lib/courses'
 import { requireAuth } from '../middleware/auth'
 import { HttpError } from '../middleware/error'
 import { validateBody } from '../middleware/validate'
@@ -103,17 +103,8 @@ lessonsRouter.post('/:id/progress', requireAuth, validateBody(lessonProgressSche
     create: { enrollmentId: enrollment.id, lessonId: id, ...progressData },
   })
 
-  // Recompute overall course progress.
-  const [total, done] = await Promise.all([
-    prisma.lesson.count({ where: { module: { courseId } } }),
-    prisma.lessonProgress.count({ where: { enrollmentId: enrollment.id, status: 'completed' } }),
-  ])
-  const progressPercent = total > 0 ? Math.round((done / total) * 100) : 0
-  const status = progressPercent >= 100 ? 'completed' : progressPercent > 0 ? 'in_progress' : 'not_started'
-  await prisma.enrollment.update({
-    where: { id: enrollment.id },
-    data: { progressPercent, status, completedAt: status === 'completed' ? new Date() : null },
-  })
+  // Recompute overall course progress (completed lessons + passed required tests).
+  const { progressPercent, status } = await recomputeEnrollmentProgress(enrollment.id, courseId)
 
   res.json({ lessonId: id, completed, progressPercent, status })
 })

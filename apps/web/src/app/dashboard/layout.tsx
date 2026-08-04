@@ -11,7 +11,7 @@ import { Logo } from '@/components/logo'
 import { ThemeToggle } from '@/components/theme-toggle'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, signOut } = useAuth()
+  const { user, loading } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -42,7 +42,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <Menu size={20} />
             </button>
-            <Link href="/dashboard" className="flex items-center" aria-label="TOP — The Outsource Pro">
+            <Link href="/dashboard" className="flex items-center" aria-label="TOP - The Outsource Pro">
               <Logo className="h-9" />
             </Link>
           </div>
@@ -54,13 +54,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Avatar user={user} size={30} />
               <span className="hidden capitalize sm:inline">{user.fullName ?? user.email}</span>
             </Link>
-            <button
-              type="button"
-              onClick={signOut}
-              className="rounded-lg px-2 py-1 text-muted transition duration-200 hover:bg-card hover:text-foreground"
-            >
-              Sign out
-            </button>
             <ThemeToggle />
           </div>
         </div>

@@ -3,8 +3,18 @@
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
-import { CheckCircle2, ChevronDown, ChevronLeft, Circle, FileText, PlayCircle } from 'lucide-react'
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  Circle,
+  FileText,
+  ListChecks,
+  Lock,
+  PlayCircle,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { TestAttemptScreen } from '@/components/courses/test-attempt-screen'
 import { apiGet, apiPost } from '@/lib/api'
 import {
   type CourseDetail,
@@ -16,6 +26,21 @@ import {
   mediaUrl,
 } from '@/lib/courses'
 
+interface AttemptsInfo {
+  attempts: {
+    id: string
+    attemptNumber: number
+    score: number | null
+    passed: boolean | null
+    submittedAt: string | null
+  }[]
+  bestScore: number | null
+  passed: boolean
+  passingScore: number
+  attemptLimit: number | null
+  attemptsLeft: number | null
+}
+
 export default function LearnPage() {
   const params = useParams<{ slug: string }>()
   const [course, setCourse] = useState<CourseDetail | null>(null)
@@ -23,6 +48,9 @@ export default function LearnPage() {
   const [denied, setDenied] = useState(false)
   const [currentId, setCurrentId] = useState<string | null>(null)
   const [completed, setCompleted] = useState<Set<string>>(new Set())
+  const [passedTests, setPassedTests] = useState<Set<string>>(new Set())
+  const [testModuleId, setTestModuleId] = useState<string | null>(null) // section whose test is being taken
+  const [testAttempts, setTestAttempts] = useState<Record<string, AttemptsInfo>>({})
   const [openSections, setOpenSections] = useState<Set<string>>(new Set())
   const watchedRef = useRef(0) // seconds of the current video actually watched (skips don't count)
   const lastTimeRef = useRef(0)
@@ -38,6 +66,7 @@ export default function LearnPage() {
         }
         setCourse(d.course)
         setCompleted(new Set(d.enrollment.completedLessonIds))
+        setPassedTests(new Set(d.enrollment.passedTestIds ?? []))
         const lessons = d.course.modules.flatMap((m) => m.lessons)
         const firstIncomplete = lessons.find((l) => !d.enrollment!.completedLessonIds.includes(l.id))
         const startLesson = firstIncomplete ?? lessons[0]
@@ -51,8 +80,21 @@ export default function LearnPage() {
   }, [params.slug])
 
   const lessons = useMemo(() => (course ? course.modules.flatMap((m) => m.lessons) : []), [course])
+  const requiredTests = useMemo(
+    () =>
+      course
+        ? course.modules
+            .map((m) => m.test)
+            .filter((t): t is NonNullable<typeof t> => Boolean(t) && t!.isRequired)
+        : [],
+    [course],
+  )
   const current = lessons.find((l) => l.id === currentId) ?? null
-  const progressPercent = lessons.length > 0 ? Math.round((completed.size / lessons.length) * 100) : 0
+  // Progress counts completed lessons + passed required tests, matching the server.
+  const passedRequired = requiredTests.filter((t) => passedTests.has(t.id)).length
+  const totalUnits = lessons.length + requiredTests.length
+  const progressPercent =
+    totalUnits > 0 ? Math.round(((completed.size + passedRequired) / totalUnits) * 100) : 0
 
   async function setLessonComplete(lesson: CourseLesson, done: boolean) {
     setCompleted((prev) => {
@@ -93,6 +135,17 @@ export default function LearnPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentId])
 
+  // Load the learner's own attempt history for any expanded section that has a test.
+  useEffect(() => {
+    if (!course) return
+    course.modules.forEach((m) => {
+      if (!m.test || !openSections.has(m.id) || testAttempts[m.id]) return
+      apiGet<AttemptsInfo>(`/modules/${m.id}/test/attempts`)
+        .then((d) => setTestAttempts((prev) => ({ ...prev, [m.id]: d })))
+        .catch(() => {})
+    })
+  }, [course, openSections, testAttempts])
+
   // Keep only the section of the currently-playing lecture expanded.
   useEffect(() => {
     if (!course || !currentId) return
@@ -116,6 +169,12 @@ export default function LearnPage() {
   const currentDone = current ? completed.has(current.id) : false
   const videoUrl = mediaUrl(current?.video ?? null)
   const pdfUrl = current && current.resources.length > 0 ? mediaUrl(current.resources[0].media) : null
+
+  // A required, unpassed section test locks every section after it.
+  const firstBlockingIndex = course.modules.findIndex(
+    (m) => m.test?.isRequired && !passedTests.has(m.test.id),
+  )
+  const isLocked = (idx: number) => firstBlockingIndex !== -1 && idx > firstBlockingIndex
 
   return (
     <div className="flex min-h-screen flex-col lg:h-screen lg:overflow-hidden">
@@ -191,10 +250,11 @@ export default function LearnPage() {
             </p>
           </div>
           <div className="min-h-0 flex-1 lg:overflow-y-auto">
-              {course.modules.map((m) => {
+              {course.modules.map((m, mi) => {
                 const done = m.lessons.filter((l) => completed.has(l.id)).length
                 const dur = m.lessons.reduce((s, l) => s + (l.videoDurationSeconds ?? 0), 0)
                 const open = openSections.has(m.id)
+                const locked = isLocked(mi)
                 return (
                   <div key={m.id} className="border-b border-border last:border-0">
                     <button
@@ -209,11 +269,14 @@ export default function LearnPage() {
                       }
                       className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition hover:bg-background"
                     >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold">{m.title}</span>
-                        <span className="text-xs text-muted">
-                          {done} / {m.lessons.length}
-                          {dur > 0 && <> · {formatTotalTime(dur)}</>}
+                      <span className="flex min-w-0 items-center gap-2">
+                        {locked && <Lock size={13} className="shrink-0 text-muted" />}
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold">{m.title}</span>
+                          <span className="text-xs text-muted">
+                            {done} / {m.lessons.length}
+                            {dur > 0 && <> · {formatTotalTime(dur)}</>}
+                          </span>
                         </span>
                       </span>
                       <ChevronDown size={16} className={`shrink-0 text-muted transition ${open ? 'rotate-180' : ''}`} />
@@ -235,18 +298,21 @@ export default function LearnPage() {
                               <div
                                 key={l.id}
                                 className={`flex items-start gap-2.5 px-4 py-2.5 transition ${
-                                  isCurrent ? 'bg-accent/10' : 'hover:bg-background'
-                                }`}
+                                  isCurrent ? 'bg-accent/10' : locked ? '' : 'hover:bg-background'
+                                } ${locked ? 'opacity-50' : ''}`}
                               >
-                                {isDone ? (
+                                {locked ? (
+                                  <Lock size={16} className="mt-0.5 shrink-0 text-muted/50" />
+                                ) : isDone ? (
                                   <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-accent" />
                                 ) : (
                                   <Circle size={16} className="mt-0.5 shrink-0 text-muted/50" />
                                 )}
                                 <button
                                   type="button"
+                                  disabled={locked}
                                   onClick={() => setCurrentId(l.id)}
-                                  className="min-w-0 flex-1 text-left"
+                                  className="min-w-0 flex-1 text-left disabled:cursor-not-allowed"
                                 >
                                   <span className={`block text-sm ${isCurrent ? 'font-medium text-accent' : ''}`}>
                                     {l.title}
@@ -263,6 +329,90 @@ export default function LearnPage() {
                               </div>
                             )
                           })}
+
+                          {m.test &&
+                            (() => {
+                              const info = testAttempts[m.id]
+                              const isPassed = passedTests.has(m.test.id)
+                              const noneLeft = info?.attemptsLeft === 0
+                              return (
+                                <div className="border-t border-border/60">
+                                  <div className="flex items-center justify-between gap-2 px-4 py-2.5">
+                                    <span className="flex min-w-0 items-center gap-2.5">
+                                      <ListChecks size={16} className="mt-0.5 shrink-0 text-accent" />
+                                      <span className="min-w-0">
+                                        <span className="block truncate text-sm font-medium">
+                                          {m.test.title}
+                                        </span>
+                                        <span className="text-xs text-muted">
+                                          {m.test._count.questions} question
+                                          {m.test._count.questions === 1 ? '' : 's'} ·{' '}
+                                          {m.test.isRequired ? 'Required' : 'Optional'}
+                                          {info?.attemptLimit != null && (
+                                            <> · {info.attempts.length}/{info.attemptLimit} attempts</>
+                                          )}
+                                        </span>
+                                      </span>
+                                    </span>
+                                    <span className="flex shrink-0 items-center gap-2.5">
+                                      {isPassed && (
+                                        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                                          <CheckCircle2 size={14} /> Passed
+                                        </span>
+                                      )}
+                                      {/* Retaking is allowed until attempts run out, even after
+                                          passing — pass/fail is judged on the best attempt, so a
+                                          later attempt can never take the pass away. */}
+                                      {noneLeft ? (
+                                        !isPassed && (
+                                          <span className="text-xs text-muted">No attempts left</span>
+                                        )
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          disabled={locked}
+                                          onClick={() => setTestModuleId(m.id)}
+                                          className={
+                                            isPassed
+                                              ? 'rounded-lg border border-accent/50 px-3 py-1.5 text-xs font-semibold text-accent transition hover:bg-accent/10 disabled:opacity-40'
+                                              : 'rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-40'
+                                          }
+                                        >
+                                          {info && info.attempts.length > 0 ? 'Retake' : 'Take test'}
+                                        </button>
+                                      )}
+                                    </span>
+                                  </div>
+
+                                  {info && info.attempts.length > 0 && (
+                                    <div className="space-y-1 px-4 pb-2.5 pl-11">
+                                      {info.attempts.map((a) => (
+                                        <div
+                                          key={a.id}
+                                          className="flex items-center justify-between gap-2 text-xs"
+                                        >
+                                          <span className="text-muted">Attempt {a.attemptNumber}</span>
+                                          <span
+                                            className={
+                                              a.passed
+                                                ? 'font-medium text-emerald-600 dark:text-emerald-400'
+                                                : 'text-red-500'
+                                            }
+                                          >
+                                            {a.score}% · {a.passed ? 'passed' : 'failed'}
+                                          </span>
+                                        </div>
+                                      ))}
+                                      {info.bestScore !== null && (
+                                        <p className="pt-0.5 text-xs text-muted">
+                                          Best {info.bestScore}% · pass mark {info.passingScore}%
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })()}
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -272,6 +422,23 @@ export default function LearnPage() {
             </div>
         </aside>
       </div>
+
+      {testModuleId && (
+        <TestAttemptScreen
+          moduleId={testModuleId}
+          courseSlug={params.slug}
+          onClose={() => setTestModuleId(null)}
+          onResult={(passed, testId) => {
+            if (passed) setPassedTests((prev) => new Set(prev).add(testId))
+            // Drop the cached history so the section re-fetches this learner's attempts.
+            setTestAttempts((prev) => {
+              const next = { ...prev }
+              delete next[testModuleId]
+              return next
+            })
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -33,7 +33,8 @@ export default function NewCoursePage() {
       .catch(() => {})
   }, [])
 
-  const canCreate = user?.role === 'admin' || Boolean(user?.canCreateCourses)
+  const canCreate =
+    user?.role === 'admin' || Boolean(user?.canCreateCourses) || Boolean(user?.canManageAllCourses)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()

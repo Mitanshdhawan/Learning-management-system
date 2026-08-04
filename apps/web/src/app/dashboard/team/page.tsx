@@ -102,7 +102,7 @@ export default function TeamPage() {
       <div>
         <h1 className="text-2xl font-bold">My Team</h1>
         <p className="mt-1 text-sm text-muted">
-          People who report to you — open anyone to track their course progress.
+          People who report to you - open anyone to track their course progress.
         </p>
       </div>
 

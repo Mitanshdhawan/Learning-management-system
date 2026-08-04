@@ -40,7 +40,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen">
       <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
-        <Link href="/" aria-label="TOP — The Outsource Pro">
+        <Link href="/" aria-label="TOP - The Outsource Pro">
           <Logo className="h-8" />
         </Link>
         <ThemeToggle />
@@ -78,7 +78,11 @@ export default function LoginPage() {
             />
           </div>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && (
+            <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+              {error}
+            </p>
+          )}
 
           <button
             type="submit"

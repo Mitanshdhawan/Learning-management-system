@@ -9,9 +9,9 @@ export function Logo({ className = 'h-8' }: { className?: string }) {
   return (
     <span className="inline-flex items-center">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/logo.png" alt="TOP — The Outsource Pro" className={`${base} dark:hidden`} />
+      <img src="/logo.png" alt="TOP - The Outsource Pro" className={`${base} dark:hidden`} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/logo-white.png" alt="TOP — The Outsource Pro" className={`hidden ${base} dark:block`} />
+      <img src="/logo-white.png" alt="TOP - The Outsource Pro" className={`hidden ${base} dark:block`} />
     </span>
   )
 }

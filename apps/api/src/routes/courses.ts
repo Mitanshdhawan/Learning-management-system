@@ -85,11 +85,20 @@ coursesRouter.get('/:slug', requireAuth, async (req, res) => {
       progressPercent: true,
       status: true,
       lessonProgress: { where: { status: 'completed' }, select: { lessonId: true } },
+      testAttempts: { where: { passed: true }, select: { testId: true } },
     },
   })
 
   const totalLessons = course.modules.reduce((sum, m) => sum + m.lessons.length, 0)
   const completedIds = enrollment?.lessonProgress.map((p) => p.lessonId) ?? []
+  const passedTestIds = [...new Set(enrollment?.testAttempts.map((a) => a.testId) ?? [])]
+
+  // Progress counts completed lessons + passed required tests over the same total.
+  const requiredTests = course.modules
+    .map((m) => m.test)
+    .filter((t): t is NonNullable<typeof t> => Boolean(t) && t!.isRequired)
+  const totalUnits = totalLessons + requiredTests.length
+  const doneUnits = completedIds.length + requiredTests.filter((t) => passedTestIds.includes(t.id)).length
 
   res.json({
     course,
@@ -97,10 +106,10 @@ coursesRouter.get('/:slug', requireAuth, async (req, res) => {
     enrollment: enrollment
       ? {
           id: enrollment.id,
-          // Derived from the actual completed lessons so it always matches the checkboxes.
-          progressPercent: totalLessons > 0 ? Math.round((completedIds.length / totalLessons) * 100) : 0,
+          progressPercent: totalUnits > 0 ? Math.round((doneUnits / totalUnits) * 100) : 0,
           status: enrollment.status,
           completedLessonIds: completedIds,
+          passedTestIds,
         }
       : null,
   })

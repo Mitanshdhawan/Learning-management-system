@@ -57,7 +57,10 @@ export default function CourseOverviewPage() {
   }
 
   const { course, stats, enrollment } = data
-  const canEdit = user?.role === 'admin' || course.createdBy.id === user?.id
+  const canEdit =
+    user?.role === 'admin' ||
+    Boolean(user?.canManageAllCourses) ||
+    course.createdBy.id === user?.id
   const thumb = courseThumbUrl(course.thumbnail)
   const instructor = { fullName: course.createdBy.fullName, email: '', avatar: course.createdBy.avatar }
   // The lecture marked as the free preview (only videos can be a preview).

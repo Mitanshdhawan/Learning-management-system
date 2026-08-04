@@ -21,7 +21,8 @@ export default function CoursesPage() {
   }, [])
 
   const title = 'All courses'
-  const canCreate = user?.role === 'admin' || Boolean(user?.canCreateCourses)
+  const canCreate =
+    user?.role === 'admin' || Boolean(user?.canCreateCourses) || Boolean(user?.canManageAllCourses)
 
   return (
     <div className="space-y-6">
@@ -56,7 +57,11 @@ export default function CoursesPage() {
             <CourseCard
               key={c.id}
               course={c}
-              canEdit={user?.role === 'admin' || c.createdBy.id === user?.id}
+              canEdit={
+                user?.role === 'admin' ||
+                Boolean(user?.canManageAllCourses) ||
+                c.createdBy.id === user?.id
+              }
             />
           ))}
         </div>

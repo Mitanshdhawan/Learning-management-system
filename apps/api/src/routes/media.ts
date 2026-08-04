@@ -11,7 +11,13 @@ mediaRouter.post('/', requireAuth, uploadMedia.single('file'), async (req, res) 
   const file = req.file
   if (!file) throw new HttpError(400, 'No file uploaded')
 
-  const stored = await saveMedia(file, 'courses')
+  let stored
+  try {
+    stored = await saveMedia(file, 'courses')
+  } catch (e) {
+    console.error('[media] could not store upload:', e)
+    throw new HttpError(502, `Could not store the file: ${(e as Error).message}`)
+  }
   const media = await prisma.mediaAsset.create({
     data: {
       kind: stored.kind,

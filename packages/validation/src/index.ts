@@ -111,5 +111,67 @@ export const updateUserSchema = z.object({
   managerId: z.string().uuid().nullable().optional(),
   role: roleSchema.optional(),
   canCreateCourses: z.boolean().optional(),
+  canManageAllCourses: z.boolean().optional(),
 })
 export type UpdateUserInput = z.infer<typeof updateUserSchema>
+
+// Block / unblock a user's ability to sign in.
+export const userStatusSchema = z.object({
+  status: z.enum(['active', 'deactivated']),
+})
+export type UserStatusInput = z.infer<typeof userStatusSchema>
+
+// ---- Tests / assessments (MCQ only, auto-graded) ----
+export const questionTypes = ['single_choice', 'multiple_choice', 'true_false'] as const
+export const questionTypeSchema = z.enum(questionTypes)
+export type QuestionTypeValue = z.infer<typeof questionTypeSchema>
+
+export const testQuestionSchema = z.object({
+  type: questionTypeSchema,
+  questionText: z.string().min(1).max(1000),
+  points: z.number().int().min(1).max(100).default(1),
+  options: z
+    .array(z.object({ text: z.string().min(1).max(500), isCorrect: z.boolean().default(false) }))
+    .min(2)
+    .max(10),
+})
+
+export const testUpsertSchema = z.object({
+  title: z.string().min(1).max(200),
+  isRequired: z.boolean().default(true),
+  passingScore: z.number().int().min(0).max(100).default(70),
+  // null / omitted = unlimited attempts
+  maxAttempts: z.number().int().min(1).max(50).nullable().optional(),
+  questions: z.array(testQuestionSchema).min(1).max(50),
+})
+export type TestUpsertInput = z.infer<typeof testUpsertSchema>
+
+// Admin/manager raising or lowering one learner's attempt limit for a test.
+export const testAllowanceSchema = z.object({
+  testId: z.string().uuid(),
+  maxAttempts: z.number().int().min(1).max(50),
+})
+export type TestAllowanceInput = z.infer<typeof testAllowanceSchema>
+
+// A manager/admin assigning a course to a team member as mandatory.
+export const assignCourseSchema = z.object({
+  courseId: z.string().uuid(),
+  dueDate: z.coerce.date().nullable().optional(),
+})
+export type AssignCourseInput = z.infer<typeof assignCourseSchema>
+
+// A learner submitting an attempt: the selected option(s) per question,
+// plus the proctoring footage uploaded just before submitting.
+export const testSubmitSchema = z.object({
+  answers: z
+    .array(
+      z.object({
+        questionId: z.string().uuid(),
+        selectedOptionIds: z.array(z.string().uuid()).default([]),
+      }),
+    )
+    .min(1),
+  screenRecordingId: z.string().uuid().nullable().optional(),
+  cameraRecordingId: z.string().uuid().nullable().optional(),
+})
+export type TestSubmitInput = z.infer<typeof testSubmitSchema>

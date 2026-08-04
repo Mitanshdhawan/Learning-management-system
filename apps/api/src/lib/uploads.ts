@@ -61,15 +61,17 @@ export async function saveImage(file: Express.Multer.File, folder: string): Prom
 
 // Accepts images, videos, and PDFs (larger limit) — used by the generic /media endpoint.
 // PDFs are the only document type allowed because browsers render them inline (no forced download).
+// The MIME essence, ignoring any `;codecs=…` parameters a recorder tacks on.
+function mimeEssence(mimetype: string): string {
+  return mimetype.split(/[;,]/)[0].trim().toLowerCase()
+}
+
 export const uploadMedia = multer({
   storage,
   limits: { fileSize: 200 * 1024 * 1024 }, // 200 MB
   fileFilter: (_req, file, cb) => {
-    if (
-      file.mimetype.startsWith('image/') ||
-      file.mimetype.startsWith('video/') ||
-      file.mimetype === 'application/pdf'
-    )
+    const essence = mimeEssence(file.mimetype)
+    if (essence.startsWith('image/') || essence.startsWith('video/') || essence === 'application/pdf')
       cb(null, true)
     else cb(new Error('Only images, videos, or PDF files are allowed'))
   },
@@ -89,22 +91,39 @@ export async function saveMedia(file: Express.Multer.File, folder: string): Prom
       : 'document'
 
   const creds = cloudinaryCreds()
-  if (creds) {
+  // Cloudinary's free tier rejects videos over 100 MB, so don't waste a slow
+  // round trip on one — keep it here and serve it from /uploads instead.
+  const tooBigForCloudinary = isVideo && file.size > 95 * 1024 * 1024
+
+  if (creds && !tooBigForCloudinary) {
     cloudinary.config(creds)
-    const result = await cloudinary.uploader.upload(file.path, {
-      folder: `toplms/${folder}`,
-      resource_type: isVideo ? 'video' : 'image',
-    })
-    await unlink(file.path).catch(() => {})
-    return {
-      provider: 'cloudinary',
-      storageKey: result.public_id,
-      kind,
-      width: result.width,
-      height: result.height,
-      durationSeconds: result.duration ? Math.round(result.duration) : undefined,
+    try {
+      const result = await cloudinary.uploader.upload(file.path, {
+        folder: `toplms/${folder}`,
+        resource_type: isVideo ? 'video' : 'image',
+      })
+      await unlink(file.path).catch(() => {})
+      return {
+        provider: 'cloudinary',
+        storageKey: result.public_id,
+        kind,
+        width: result.width,
+        height: result.height,
+        durationSeconds: result.duration ? Math.round(result.duration) : undefined,
+      }
+    } catch (err) {
+      // Losing the file is worse than not having a CDN copy — a proctoring
+      // recording in particular can never be re-captured. Fall back to local.
+      console.error(
+        `Cloudinary upload failed for ${file.originalname} (${file.size} bytes): ${
+          (err as Error).message
+        } — serving it from /uploads instead`,
+      )
     }
+  } else if (tooBigForCloudinary) {
+    console.warn(`${file.originalname} is ${file.size} bytes — storing locally, too large for Cloudinary`)
   }
+
   return { provider: 'local', storageKey: file.filename, kind }
 }
 
