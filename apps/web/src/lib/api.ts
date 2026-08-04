@@ -39,8 +39,18 @@ async function request<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: 'include',
   })
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string }
-  if (!res.ok) throw new ApiError(res.status, data?.error ?? 'Request failed')
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string; code?: string }
+  if (!res.ok) {
+    // A block can land mid-session: the server rejects every request instantly with
+    // this code, so drop the dead token and send them to the login screen at once.
+    if (data?.code === 'ACCOUNT_BLOCKED' && typeof window !== 'undefined') {
+      localStorage.removeItem('accessToken')
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login?blocked=1'
+      }
+    }
+    throw new ApiError(res.status, data?.error ?? 'Request failed')
+  }
   return data
 }
 

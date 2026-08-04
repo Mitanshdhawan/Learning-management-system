@@ -5,7 +5,7 @@ import { env } from '../env'
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../lib/jwt'
 import { hashPassword, verifyPassword } from '../lib/password'
 import { safeUserSelect } from '../lib/user'
-import { requireAuth } from '../middleware/auth'
+import { ACCOUNT_BLOCKED, requireAuth } from '../middleware/auth'
 import { HttpError } from '../middleware/error'
 import { validateBody } from '../middleware/validate'
 
@@ -72,7 +72,7 @@ authRouter.post('/login', validateBody(loginSchema), async (req, res) => {
     throw new HttpError(401, 'Invalid credentials')
   }
   if (existing.status === 'deactivated') {
-    throw new HttpError(403, 'Your access has been blocked. Please contact your manager.')
+    throw new HttpError(403, 'Your access has been blocked. Please contact your manager.', ACCOUNT_BLOCKED)
   }
   if (existing.status !== 'active') {
     throw new HttpError(401, 'Invalid credentials')
@@ -119,7 +119,7 @@ authRouter.get('/me', requireAuth, async (req, res) => {
   if (!user) throw new HttpError(404, 'User not found')
   // A user blocked mid-session is signed out the next time the app loads /me.
   if (user.status === 'deactivated') {
-    throw new HttpError(403, 'Your access has been blocked. Please contact your manager.')
+    throw new HttpError(403, 'Your access has been blocked. Please contact your manager.', ACCOUNT_BLOCKED)
   }
   res.json({ user })
 })

@@ -1,11 +1,13 @@
 import type { NextFunction, Request, Response } from 'express'
 
-/** Throw this from any handler to return a specific status + message. */
+/** Throw this from any handler to return a specific status + message (+ optional code). */
 export class HttpError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  code?: string
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.status = status
+    this.code = code
     this.name = 'HttpError'
   }
 }
@@ -16,7 +18,7 @@ export function notFound(_req: Request, res: Response) {
 
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
   if (err instanceof HttpError) {
-    res.status(err.status).json({ error: err.message })
+    res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) })
     return
   }
 

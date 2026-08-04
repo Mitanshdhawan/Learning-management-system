@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth, type AuthUser } from '@/components/auth-provider'
 import { Logo } from '@/components/logo'
 import { useTheme } from '@/components/theme-provider'
@@ -17,6 +17,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState('admin1234')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // Surfaced when a mid-session block bounced the user back here.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('blocked')) {
+      setError('Your access has been blocked. Please contact your manager.')
+    }
+  }, [])
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()

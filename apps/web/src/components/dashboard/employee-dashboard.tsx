@@ -93,7 +93,9 @@ export function EmployeeDashboard() {
   }, [])
 
   // Derive the tiles from the same data My Learning uses, so the two never drift.
-  const inProgress = items?.filter((e) => e.progressPercent > 0 && e.progressPercent < 100).length ?? 0
+  // "In progress" = enrolled but not yet completed — including courses not started
+  // yet, so an assigned-but-untouched course is still counted (never invisible).
+  const inProgress = items?.filter((e) => e.progressPercent < 100).length ?? 0
   const completed = items?.filter((e) => e.progressPercent >= 100).length ?? 0
   const certificates =
     items?.filter((e) => e.progressPercent >= 100 && e.course.certificateEnabled).length ?? 0

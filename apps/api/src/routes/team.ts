@@ -228,7 +228,9 @@ teamRouter.get('/:id', requireAuth, async (req, res) => {
 
   const courseCount = enrollments.length
   const completedCourses = enrollments.filter((e) => e.status === 'completed').length
-  const inProgress = enrollments.filter((e) => e.status === 'in_progress').length
+  // "In progress" = enrolled but not yet completed, including not-started courses —
+  // matches the learner's own dashboard so the numbers agree across views.
+  const inProgress = enrollments.filter((e) => e.progressPercent < 100).length
   const avgProgress =
     courseCount > 0
       ? Math.round(enrollments.reduce((sum, e) => sum + e.progressPercent, 0) / courseCount)
