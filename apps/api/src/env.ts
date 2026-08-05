@@ -9,6 +9,9 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(16),
   ACCESS_TOKEN_TTL: z.string().default('15m'),
   REFRESH_TOKEN_TTL: z.string().default('7d'),
+  // Email (Resend). Without a key, email falls back to logging the link.
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default('TOP LMS <onboarding@resend.dev>'),
 })
 
 const parsed = envSchema.safeParse(process.env)
