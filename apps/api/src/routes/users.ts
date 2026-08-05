@@ -217,14 +217,32 @@ usersRouter.delete('/:id', requireAuth, async (req, res) => {
     if (admins <= 1) throw new HttpError(400, 'Cannot delete the last admin')
   }
 
+  // Guard: never erase an author out from under their courses — those may have
+  // other learners enrolled. Their courses must be reassigned or removed first.
+  const createdCourses = await prisma.course.count({ where: { createdById: id } })
+  if (createdCourses > 0) {
+    const s = createdCourses === 1 ? '' : 's'
+    throw new HttpError(
+      409,
+      `Cannot delete: this user created ${createdCourses} course${s}. Reassign or delete those course${s} first.`,
+    )
+  }
+
   try {
+    // Cascade the user's own records, then the user. Deleting their enrollments
+    // cascades attempts, lesson progress, answers and certificates; test
+    // allowances and notifications cascade on the user delete itself. Reports and
+    // any records they authored elsewhere (uploads, assignments) are set null.
     await prisma.$transaction([
-      // Revoke any pending invitation so a deleted invitee can't reappear by accepting the old link.
+      // Invitations they sent, plus any pending invite addressed to them.
+      prisma.invitation.deleteMany({ where: { invitedById: id } }),
       prisma.invitation.deleteMany({ where: { email: target.email, acceptedAt: null } }),
+      // Their enrollments → attempts, progress, answers, certificates (all cascade).
+      prisma.enrollment.deleteMany({ where: { userId: id } }),
       prisma.user.delete({ where: { id } }),
     ])
   } catch {
-    throw new HttpError(409, 'Cannot delete: this user still has related records (courses, invitations, etc.)')
+    throw new HttpError(409, 'Cannot delete: this user still has related records that must be removed first.')
   }
 
   res.status(204).end()

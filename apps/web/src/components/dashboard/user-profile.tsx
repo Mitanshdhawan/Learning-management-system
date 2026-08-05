@@ -883,8 +883,9 @@ export function UserProfile({
           description={
             <>
               This permanently deletes{' '}
-              <span className="font-medium text-foreground">{user.fullName ?? user.email}</span> and revokes their
-              access. This cannot be undone.
+              <span className="font-medium text-foreground">{user.fullName ?? user.email}</span>, along with
+              their enrollments, test attempts and progress. This cannot be undone. To keep their records,
+              use <span className="font-medium text-foreground">Block access</span> instead.
             </>
           }
           confirmLabel="Delete user"
