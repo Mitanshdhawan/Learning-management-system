@@ -118,7 +118,7 @@ function InviteForm({ managers, onDone }: { managers: AuthUser[]; onDone: () => 
             </button>
           </div>
           <p className="mt-2 text-xs text-muted">
-            The link expires in 7 days. (Automatic email delivery isn&apos;t set up yet.)
+            The link expires in 7 days.
           </p>
         </div>
       )}

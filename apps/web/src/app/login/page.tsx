@@ -13,8 +13,8 @@ export default function LoginPage() {
   const router = useRouter()
   const { signIn } = useAuth()
   const { setTheme } = useTheme()
-  const [email, setEmail] = useState('admin@toplms.local')
-  const [password, setPassword] = useState('admin1234')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -100,7 +100,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-muted">Dev login: admin@toplms.local / admin1234</p>
       </main>
     </div>
   )
