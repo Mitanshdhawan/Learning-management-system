@@ -58,10 +58,9 @@ invitationsRouter.post(
     const acceptUrl = `${env.WEB_APP_URL}/invite/${token}`
     await sendInviteEmail(email, acceptUrl)
 
-    res.status(201).json({
-      invitation,
-      ...(env.NODE_ENV === 'development' ? { devAcceptUrl: acceptUrl } : {}),
-    })
+    // Return the link so the admin can share it directly. Real email delivery is
+    // still a stub, so this is currently the only way the invitee gets the link.
+    res.status(201).json({ invitation, acceptUrl })
   },
 )
 

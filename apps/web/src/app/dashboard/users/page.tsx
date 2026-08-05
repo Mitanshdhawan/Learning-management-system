@@ -1,6 +1,6 @@
 'use client'
 
-import { Search, UserPlus } from 'lucide-react'
+import { Check, Copy, Search, UserPlus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth, type AuthUser } from '@/components/auth-provider'
 import { UserCard } from '@/components/dashboard/user-card'
@@ -14,6 +14,7 @@ function InviteForm({ managers, onDone }: { managers: AuthUser[]; onDone: () => 
   const [role, setRole] = useState<'employee' | 'manager'>('employee')
   const [managerId, setManagerId] = useState('')
   const [link, setLink] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -21,12 +22,13 @@ function InviteForm({ managers, onDone }: { managers: AuthUser[]; onDone: () => 
     e.preventDefault()
     setError(null)
     setLink(null)
+    setCopied(false)
     setBusy(true)
     try {
       const payload: { email: string; role: string; managerId?: string } = { email, role }
       if (role === 'employee' && managerId) payload.managerId = managerId
-      const res = await apiPost<{ devAcceptUrl?: string }>('/invitations', payload)
-      setLink(res.devAcceptUrl ?? 'Invitation sent.')
+      const res = await apiPost<{ acceptUrl?: string }>('/invitations', payload)
+      setLink(res.acceptUrl ?? null)
       setEmail('')
       setManagerId('')
       await onDone()
@@ -85,12 +87,40 @@ function InviteForm({ managers, onDone }: { managers: AuthUser[]; onDone: () => 
       </form>
       {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
       {link && (
-        <p className="mt-3 break-all text-sm text-muted">
-          Invite created →{' '}
-          <a href={link} className="text-accent underline">
-            {link}
-          </a>
-        </p>
+        <div className="mt-3 rounded-lg border border-border bg-background p-3">
+          <p className="mb-2 text-sm font-medium">
+            Invitation created — share this link with the person to let them join:
+          </p>
+          <div className="flex items-center gap-2">
+            <a
+              href={link}
+              target="_blank"
+              rel="noreferrer"
+              className="min-w-0 flex-1 truncate text-sm text-accent underline"
+            >
+              {link}
+            </a>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(link)
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                } catch {
+                  /* clipboard blocked — the link is still selectable above */
+                }
+              }}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:border-accent/60"
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            The link expires in a few days. (Automatic email delivery isn&apos;t set up yet.)
+          </p>
+        </div>
       )}
     </div>
   )
