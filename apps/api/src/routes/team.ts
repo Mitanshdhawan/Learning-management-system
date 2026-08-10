@@ -82,6 +82,150 @@ teamRouter.get('/', requireAuth, async (req, res) => {
   res.json({ members })
 })
 
+// GET /api/team/overview — team learning health for the manager/admin dashboard.
+// Registered before /:id so "overview" isn't treated as a user id.
+teamRouter.get('/overview', requireAuth, async (req, res) => {
+  const me = req.user!
+  if (me.role !== 'admin' && me.role !== 'manager') throw new HttpError(403, 'Forbidden')
+
+  const now = Date.now()
+  const DAY = 86_400_000
+  const rows = await prisma.user.findMany({
+    where: { managerId: me.id },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      ...safeUserSelect,
+      lastLoginAt: true,
+      enrollments: {
+        select: {
+          ...enrollmentProgressSelect,
+          isMandatory: true,
+          dueDate: true,
+          lessonProgress: { where: { status: 'completed' as const }, select: { lessonId: true, completedAt: true, lastAccessedAt: true } },
+          testAttempts: { where: { passed: true }, select: { testId: true, submittedAt: true } },
+          course: {
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              modules: {
+                select: {
+                  _count: { select: { lessons: true } },
+                  test: { select: { id: true, isRequired: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  let aggCompleted = 0
+  let aggInProgress = 0
+  let aggNotStarted = 0
+  let aggOverdue = 0
+  const overdueList: {
+    userId: string
+    userName: string
+    avatar: { storageKey: string; provider: string } | null
+    courseId: string
+    courseTitle: string
+    courseSlug: string
+    dueDate: Date
+    daysOverdue: number
+    progressPercent: number
+  }[] = []
+
+  const members = rows.map((row) => {
+    const { enrollments, lastLoginAt, ...user } = row
+    let overdue = 0
+    let inProgress = 0
+    let notStarted = 0
+    let lastActivity = lastLoginAt?.getTime() ?? 0
+
+    const percents = enrollments.map((e) => {
+      const percent = computePercent(e).percent
+      if (percent >= 100) aggCompleted++
+      else if (percent > 0) {
+        aggInProgress++
+        inProgress++
+      } else {
+        aggNotStarted++
+        notStarted++
+      }
+
+      for (const lp of e.lessonProgress) {
+        const t = (lp.lastAccessedAt ?? lp.completedAt)?.getTime() ?? 0
+        if (t > lastActivity) lastActivity = t
+      }
+      for (const a of e.testAttempts) {
+        const t = a.submittedAt?.getTime() ?? 0
+        if (t > lastActivity) lastActivity = t
+      }
+
+      if (e.isMandatory && percent < 100 && e.dueDate && e.dueDate.getTime() < now) {
+        overdue++
+        overdueList.push({
+          userId: user.id,
+          userName: user.fullName ?? user.email,
+          avatar: user.avatar,
+          courseId: e.course.id,
+          courseTitle: e.course.title,
+          courseSlug: e.course.slug,
+          dueDate: e.dueDate,
+          daysOverdue: Math.floor((now - e.dueDate.getTime()) / DAY),
+          progressPercent: percent,
+        })
+      }
+      return percent
+    })
+    aggOverdue += overdue
+    const courseCount = percents.length
+    const completedCourses = percents.filter((p) => p >= 100).length
+    const avgProgress =
+      courseCount > 0 ? Math.round(percents.reduce((s, p) => s + p, 0) / courseCount) : 0
+    return {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      avatar: user.avatar,
+      courseCount,
+      completedCourses,
+      inProgress,
+      notStarted,
+      avgProgress,
+      overdueMandatory: overdue,
+      lastActivityAt: lastActivity > 0 ? new Date(lastActivity).toISOString() : null,
+    }
+  })
+
+  overdueList.sort((a, b) => b.daysOverdue - a.daysOverdue)
+
+  const teamSize = members.length
+  const avgProgress =
+    teamSize > 0 ? Math.round(members.reduce((s, m) => s + m.avgProgress, 0) / teamSize) : 0
+  const totalCompleted = members.reduce((s, m) => s + m.completedCourses, 0)
+
+  res.json({
+    teamSize,
+    aggregate: {
+      avgProgress,
+      totalCompleted,
+      overdueMandatory: aggOverdue,
+      enrollments: {
+        completed: aggCompleted,
+        inProgress: aggInProgress,
+        notStarted: aggNotStarted,
+        total: aggCompleted + aggInProgress + aggNotStarted,
+      },
+    },
+    overdue: overdueList,
+    members,
+  })
+})
+
 // GET /api/team/:id — one member's profile and per-course progress.
 // An admin can view anyone; a manager only their own reports.
 teamRouter.get('/:id', requireAuth, async (req, res) => {
